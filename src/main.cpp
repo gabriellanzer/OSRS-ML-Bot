@@ -72,7 +72,7 @@ int main(int argc, char** argv)
 	//Model loading
 	OnnxENV onnxEnv;
 
-	constexpr auto modelPath = L"..\\models\\yolov8x-osrs-ores-v5.onnx";
+	constexpr auto modelPath = L"..\\..\\models\\yolov8x-osrs-ores-v5.onnx";
 	std::wcout << "Initializing YOLOv8, from path '" << modelPath << "'\n";
 	std::flush(std::wcout);
 
