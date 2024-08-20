@@ -31,7 +31,7 @@ struct ResultData {
 };
 
 std::pair<HDC, HMONITOR> pickMonitor();
-cv::Mat captureScreen(HDC srcHdc);
+void captureScreen(HDC srcHdc, cv::Mat& outMat);
 HWND showResultsWindow(cv::Mat& image, std::vector<DetectionBox>& detections, HMONITOR captureMonitor);
 
 double fps = 0.0;
@@ -62,7 +62,8 @@ int main(int argc, char** argv)
 	}
 
 	// image loading
-	cv::Mat image = captureScreen(hdc);
+	cv::Mat image;
+	captureScreen(hdc, image);
 	if (image.empty())
 	{
 		std::cout << "ERROR! blank image grabbed\n";
@@ -72,7 +73,7 @@ int main(int argc, char** argv)
 	//Model loading
 	OnnxENV onnxEnv;
 
-	constexpr auto modelPath = L"..\\..\\models\\yolov8x-osrs-ores-v5.onnx";
+	constexpr auto modelPath = L"..\\..\\models\\yolov8s-osrs-ores-v5.onnx";
 	std::wcout << "Initializing YOLOv8, from path '" << modelPath << "'\n";
 	std::flush(std::wcout);
 
@@ -118,7 +119,7 @@ int main(int argc, char** argv)
 		}
 
 		// image loading
-		image = captureScreen(hdc);
+		captureScreen(hdc, image);
  		if (image.empty())
 		{
 			std::cout << "ERROR! blank image grabbed\n";
@@ -159,7 +160,7 @@ int main(int argc, char** argv)
 				maxConfidence = maxConf;
 			}
 
-			if (maxConf > 0.9)
+			if (maxConf > 0.85)
 			{
 				float xOrig = pData[0];
 				float yOrig = pData[1];
@@ -400,7 +401,7 @@ std::pair<HDC, HMONITOR> pickMonitor() {
     return { hdc, hmonitor };
 }
 
-cv::Mat captureScreen(HDC srcHdc)
+void captureScreen(HDC srcHdc, cv::Mat& outMat)
 {
     int height = GetDeviceCaps(srcHdc, VERTRES);
     int width = GetDeviceCaps(srcHdc, HORZRES);
@@ -408,6 +409,8 @@ cv::Mat captureScreen(HDC srcHdc)
     HDC memHdc = CreateCompatibleDC(srcHdc);
     HBITMAP memBit = CreateCompatibleBitmap(srcHdc, width, height);
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(memHdc, memBit);
+
+	auto iniTime = std::chrono::steady_clock::now();
     BitBlt(memHdc, 0, 0, width, height, srcHdc, 0, 0, SRCCOPY);
 
     BITMAPINFOHEADER bi;
@@ -423,27 +426,28 @@ cv::Mat captureScreen(HDC srcHdc)
     bi.biClrUsed = 0;
     bi.biClrImportant = 0;
 
-    cv::Mat mat(height, width, CV_8UC3); // Create a Mat with 8-bit unsigned int and 3 channels
-
-    std::vector<BYTE> buffer(width * height * 3); // Buffer to hold bitmap data
+    static std::vector<BYTE> buffer(width * height * 3); // Buffer to hold bitmap data
     GetDIBits(memHdc, memBit, 0, height, buffer.data(), (BITMAPINFO*)&bi, DIB_RGB_COLORS);
+	auto endTime = std::chrono::steady_clock::now();
+	std::chrono::duration<double> durTime = endTime - iniTime;
+	// std::cout << "Capture time: " << durTime.count() * 1000.0 << "ms\n";
 
-    // Copy buffer data to cv::Mat
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            BYTE* pixel = buffer.data() + (y * width + x) * 3;
-            cv::Vec3b& color = mat.at<cv::Vec3b>(y, x);
-            color[0] = pixel[0]; // Blue
-            color[1] = pixel[1]; // Green
-            color[2] = pixel[2]; // Red
-        }
-    }
+	// Initialize mat if size does not match
+	if (outMat.empty() || outMat.cols != width || outMat.rows != height)
+	{
+		outMat = cv::Mat(height, width, CV_8UC3);
+	}
+
+	// Copy buffer data to cv::Mat using memcpy
+	for (int y = 0; y < height; ++y) {
+		BYTE* srcRow = buffer.data() + y * width * 3;
+		cv::Vec3b* dstRow = outMat.ptr<cv::Vec3b>(y);
+		memcpy(dstRow, srcRow, width * 3);
+	}
 
     SelectObject(memHdc, hOldBitmap);
     DeleteObject(memHdc);
     DeleteObject(memBit);
-
-    return mat;
 }
 
 LRESULT CALLBACK resultWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
