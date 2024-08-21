@@ -5,6 +5,11 @@ add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
 
+-- UI requirements
+add_requires("imgui v1.91.0-docking", {configs = {opengl = true, glfw = true}})
+add_requires("glfw", "glm", "glad")
+
+-- Bot requirements
 add_requires("onnxruntime", {configs = {gpu = true, cuda_version = "12"}})
 add_requires("stb", {configs = {headeronly = true}})
 add_requires("opencv")
@@ -12,6 +17,10 @@ add_requires("opencv")
 target("osrs-bot")
     set_kind("binary")
 
+	-- UI packages
+	add_packages("imgui", "glfw", "glm", "glad")
+
+	-- Bot packages
 	add_packages("onnxruntime", "stb", "opencv")
 
 	add_includedirs("src", "include")
