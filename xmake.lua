@@ -67,20 +67,5 @@ target("osrs-bot")
 		if not os.isfile(cudnnPath) then
 			raise("cuDNN DLL not found at '" .. cudnnPath .. "'! Please install cuDNN 8 for CUDA 12 and copy files to the specified path.")
 		end
-
-		-- Specify the paths to the CUDA and cuDNN DLLs
-		print("Copying CUDA DLLs to target directory")
-		local cuda_dlls = {
-			path.join(cuda_path, "bin/cudart64_12.dll"),
-			path.join(cuda_path, "bin/cublas64_12.dll"),
-			path.join(cuda_path, "bin/cublasLt64_12.dll"),
-			path.join(cuda_path, "bin/cudnn64_8.dll")
-		}
-
-		for _, dll in ipairs(cuda_dlls) do
-			print("Copying " .. dll)
-			os.cp(dll, target:targetdir())
-		end
-		print("Done!\n")
     end)
 target_end()
