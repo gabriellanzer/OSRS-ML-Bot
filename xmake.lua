@@ -6,7 +6,7 @@ add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
 
 -- UI requirements
-add_requires("imgui v1.91.0-docking", {configs = {opengl = true, glfw = true}})
+add_requires("imgui v1.91.0-docking", {configs = {opengl3 = true, glfw = true}})
 add_requires("glfw", "glm", "glad")
 
 -- Bot requirements
