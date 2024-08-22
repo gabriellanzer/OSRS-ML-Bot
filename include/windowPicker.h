@@ -1,3 +1,4 @@
+#pragma once
 
 // Windows Dependencies
 #include <windows.h>
