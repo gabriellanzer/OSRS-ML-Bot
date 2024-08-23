@@ -9,7 +9,8 @@
 class MouseTracker
 {
 public:
-	MouseTracker();
+	// Pooling rate (in Hz) at which mouse data is refreshed
+	MouseTracker(uint32_t poolingRate = 60);
 	~MouseTracker();
 
 
@@ -24,9 +25,16 @@ private:
 	bool _mouseUp = false;
 	bool _running = false;
 
+	// Used because we can't reset mouse down
+	// as that's the user-facing flag and if
+	// the user didn't read it we don't want
+	// to lose the information by resetting it
+	bool _internalMouseDown = false;
 	POINT _mousePosition;
 	POINT _mouseDownPosition;
 	POINT _mouseUpPosition;
+
+	uint32_t _poolingRate = 60;
 
 	std::thread _mouseThread;
 };

@@ -1,4 +1,4 @@
-#include <windowCapture.h>
+#include <system/windowCaptureService.h>
 
 // Windows dependencies
 #include <wingdi.h>
@@ -8,20 +8,76 @@
 
 static ULONG_PTR s_gdiplusToken;
 
-void initializeCaptureApi()
+WindowCaptureService& WindowCaptureService::getInstance()
+{
+    static WindowCaptureService instance;
+    return instance;
+}
+
+WindowCaptureService::WindowCaptureService() : _capturing(false), _srcHdc(nullptr)
 {
 	// Initialize GDI+
 	Gdiplus::GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&s_gdiplusToken, &gdiplusStartupInput, NULL);
+
+	_frontFrame = new cv::Mat();
+	_backFrame = new cv::Mat();
 }
 
-void shutdownCaptureApi()
+WindowCaptureService::~WindowCaptureService()
 {
+    StopCapture();
+
+	delete _frontFrame;
+	delete _backFrame;
+
 	// Shutdown GDI+
 	Gdiplus::GdiplusShutdown(s_gdiplusToken);
 }
 
-void captureScreen(HDC srcHdc, cv::Mat& outMat)
+
+void WindowCaptureService::StartCapture(HDC srcHdc)
+{
+    if (_capturing) return;
+
+    _srcHdc = srcHdc;
+    _capturing = true;
+    _captureThread = std::thread(&WindowCaptureService::captureLoop, this, srcHdc);
+}
+
+void WindowCaptureService::StopCapture()
+{
+    if (!_capturing) return;
+
+    _capturing = false;
+	_captureThread.join();
+}
+
+bool WindowCaptureService::IsCapturing() const
+{
+    return _capturing;
+}
+
+cv::Mat WindowCaptureService::GetLatestFrame()
+{
+    std::lock_guard<std::mutex> lock(_frameMutex);
+    return _frontFrame->clone();
+}
+
+void WindowCaptureService::captureLoop(HDC srcHdc)
+{
+    while (_capturing)
+    {
+        captureScreen(srcHdc, _backFrame);
+
+        {
+            std::lock_guard<std::mutex> lock(_frameMutex);
+            std::swap(_frontFrame, _backFrame);
+        }
+    }
+}
+
+void WindowCaptureService::captureScreen(HDC srcHdc, cv::Mat* outMat)
 {
     int height = GetDeviceCaps(srcHdc, VERTRES);
     int width = GetDeviceCaps(srcHdc, HORZRES);
@@ -49,15 +105,15 @@ void captureScreen(HDC srcHdc, cv::Mat& outMat)
     GetDIBits(memHdc, memBit, 0, height, buffer.data(), (BITMAPINFO*)&bi, DIB_RGB_COLORS);
 
 	// Initialize mat if size does not match
-	if (outMat.empty() || outMat.cols != width || outMat.rows != height)
+	if (outMat->empty() || outMat->cols != width || outMat->rows != height)
 	{
-		outMat = cv::Mat(height, width, CV_8UC3);
+		*outMat = cv::Mat(height, width, CV_8UC3);
 	}
 
 	// Copy buffer data to cv::Mat using memcpy
 	for (int y = 0; y < height; ++y) {
 		BYTE* srcRow = buffer.data() + y * width * 3;
-		cv::Vec3b* dstRow = outMat.ptr<cv::Vec3b>(y);
+		cv::Vec3b* dstRow = outMat->ptr<cv::Vec3b>(y);
 		memcpy(dstRow, srcRow, width * 3);
 	}
 

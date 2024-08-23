@@ -7,7 +7,7 @@ add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
 -- UI requirements
 add_requires("imgui v1.91.0-docking", {configs = {opengl3 = true, glfw = true}, system = false})
-add_requires("glfw", "glm", "glad")
+add_requires("glfw", "glm", "glad", "nativefiledialog-extended")
 
 -- Bot requirements
 add_requires("onnxruntime", {configs = {gpu = true, cuda_version = "12"}})
@@ -18,7 +18,7 @@ target("osrs-bot")
     set_kind("binary")
 
 	-- UI packages
-	add_packages("imgui", "glfw", "glm", "glad")
+	add_packages("imgui", "glfw", "glm", "glad", "nativefiledialog-extended")
 
 	-- Bot packages
 	add_packages("onnxruntime", "stb", "opencv")

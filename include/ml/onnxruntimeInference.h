@@ -18,6 +18,7 @@ class OnnxInferenceBase
 		// Make sure the environment is initialized
 		_env = Ort::Env(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "Default");
 	}
+	virtual ~OnnxInferenceBase() = default;
 
 	// Create session
 	virtual bool LoadModel(bool useCuda, const wchar_t* modelPath);
@@ -47,15 +48,19 @@ struct YoloDetectionBox
 
 class YOLOInterfaceBase : public OnnxInferenceBase
 {
-	public:
-	  YOLOInterfaceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames, const std::vector<int64_t> inputNodeDims)
-		  : OnnxInferenceBase(inputNodeNames, outputNodeNames, inputNodeDims) {}
+  public:
+	YOLOInterfaceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames,
+					  const std::vector<int64_t> inputNodeDims)
+		: OnnxInferenceBase(inputNodeNames, outputNodeNames, inputNodeDims)
+	{
+	}
+	virtual ~YOLOInterfaceBase() = default;
 
-	  virtual void Inference(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes) = 0;
+	virtual void Inference(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes) = 0;
 
-	protected:
-	  virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) = 0;
-	  virtual int Inference(cv::Mat& frame, std::vector<Ort::Value>& outputTensor) final;
+  protected:
+	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) = 0;
+	virtual int Inference(cv::Mat& frame, std::vector<Ort::Value>& outputTensor) final;
 };
 
 class YOLOv8 : public YOLOInterfaceBase
