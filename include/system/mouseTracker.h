@@ -6,6 +6,13 @@
 // Std Dependencies
 #include <thread>
 
+enum MouseClickState
+{
+	MOUSE_MOVE,
+	MOUSE_DOWN,
+	MOUSE_UP
+};
+
 class MouseTracker
 {
 public:
@@ -17,6 +24,10 @@ public:
 	void GetMousePosition(int& x, int& y);
 	bool GetMouseDownPosition(int& x, int& y);
 	bool GetMouseUpPosition(int& x, int& y);
+
+	void SetMousePosition(int x, int y, MouseClickState state = MOUSE_MOVE);
+
+	bool IsEscapePressed() { return GetAsyncKeyState(VK_ESCAPE) & 0x8000; }
 
 private:
 	void trackMouse();

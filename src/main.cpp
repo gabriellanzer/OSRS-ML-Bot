@@ -9,16 +9,14 @@
 #include <vector>
 
 // Third party dependencies
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
-
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
-#include <nfd.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 // Internal dependencies
 #include <system/windowPicker.h>
@@ -107,6 +105,12 @@ int main(int argc, char** argv)
     // Make the window's context current
     glfwMakeContextCurrent(window);
 
+	// Load and set window title icon
+	GLFWimage images[1]; 
+	images[0].pixels = stbi_load("icon.png", &images[0].width, &images[0].height, 0, 4);
+	glfwSetWindowIcon(window, 1, images);
+	stbi_image_free(images[0].pixels);
+
     // Initialize GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -131,21 +135,40 @@ int main(int argc, char** argv)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking
 
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-
     // Setup Platform/Renderer bindings
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 440");
 
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+	// Do a hue color shift from dark blue towards cian for all ImGui colors
+	ImVec4* colors = ImGui::GetStyle().Colors;
+	for (int i = 0; i < ImGuiCol_COUNT; i++)
+	{
+		ImVec4& col = colors[i];
+		float h, s, v;
+		ImGui::ColorConvertRGBtoHSV(col.x, col.y, col.z, h, s, v);
+		h = fmod(h - 0.04f, 1.0f);
+		ImGui::ColorConvertHSVtoRGB(h, s, v, col.x, col.y, col.z);
+	}
+
 	// Allocate app windows
 	std::vector<IBotWindow*> botWindows = {
-		new TrainingLabWindow(),
-		new BotManagerWindow(),
+		new TrainingLabWindow(window),
+		new BotManagerWindow(window),
 	};
+
+    // Initialize the previous time point
+    auto previousTime = std::chrono::high_resolution_clock::now();
 
     while (!glfwWindowShouldClose(window))
     {
+        // Calculate delta-time
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
+        previousTime = currentTime;
+
         glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -165,7 +188,7 @@ int main(int argc, char** argv)
 		// Draw each window
 		for (auto& botWindow : botWindows)
 		{
-			botWindow->Run();
+			botWindow->Run(deltaTime);
 		}
 
 		// ============== //

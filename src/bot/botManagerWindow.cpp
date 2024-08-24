@@ -18,7 +18,7 @@
 #include <utils.h>
 
 
-BotManagerWindow::BotManagerWindow() : _captureService(WindowCaptureService::getInstance())
+BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::getInstance())
 {
 	// Create a texture for the screen capture
 	glGenTextures(1, &_frameTexId);
@@ -63,7 +63,7 @@ void runBotInference(cv::Mat& image, YOLOInterfaceBase* model, std::vector<YoloD
 	}
 }
 
-void BotManagerWindow::Run()
+void BotManagerWindow::Run(float deltaTime)
 {
 	// Fetch a new copy of the image
 	if (ImGui::Begin("Bot", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))

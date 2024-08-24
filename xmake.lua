@@ -7,21 +7,21 @@ add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
 -- UI requirements
 add_requires("imgui v1.91.0-docking", {configs = {opengl3 = true, glfw = true}, system = false})
-add_requires("glfw", "glm", "glad", "nativefiledialog-extended")
+add_requires("stb", {configs = {headeronly = true}})
+add_requires("glfw", "glm", "glad", "fmt", "nativefiledialog-extended")
 
 -- Bot requirements
 add_requires("onnxruntime", {configs = {gpu = true, cuda_version = "12"}})
-add_requires("stb", {configs = {headeronly = true}})
 add_requires("opencv")
 
 target("osrs-bot")
     set_kind("binary")
 
 	-- UI packages
-	add_packages("imgui", "glfw", "glm", "glad", "nativefiledialog-extended")
+	add_packages("imgui", "stb", "glfw", "glm", "glad", "fmt", "nativefiledialog-extended")
 
 	-- Bot packages
-	add_packages("onnxruntime", "stb", "opencv")
+	add_packages("onnxruntime", "opencv")
 
 	add_includedirs("src", "include")
 	add_headerfiles("src/**.h", "include/**.h")
@@ -66,6 +66,12 @@ target("osrs-bot")
 		local cudnnPath = path.join(cuda_path, "bin/cudnn64_8.dll")
 		if not os.isfile(cudnnPath) then
 			raise("cuDNN DLL not found at '" .. cudnnPath .. "'! Please install cuDNN 8 for CUDA 12 and copy files to the specified path.")
+		end
+
+		-- Copy icon from resources to target directory
+		if not os.isfile(path.join(target:targetdir(), "icon.png")) then
+			print("Copying icon to target directory")
+			os.cp("rsc/icon.png", target:targetdir())
 		end
     end)
 target_end()

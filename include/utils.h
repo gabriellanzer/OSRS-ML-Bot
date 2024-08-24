@@ -157,6 +157,42 @@ inline void drawHorizontalSeparator(float& prevHeight, float& nextHeight, float 
 	ImGui::PopStyleVar();
 }
 
+// Function to convert HSV to RGB
+inline void HSVtoRGB(float h, float s, float v, float& r, float& g, float& b)
+{
+    int i = static_cast<int>(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    switch (i % 6)
+    {
+    case 0: r = v, g = t, b = p; break;
+    case 1: r = q, g = v, b = p; break;
+    case 2: r = p, g = v, b = t; break;
+    case 3: r = p, g = q, b = v; break;
+    case 4: r = t, g = p, b = v; break;
+    case 5: r = v, g = p, b = q; break;
+    }
+}
+
+// Function to generate a random color using the golden ratio
+inline cv::Scalar generateRandomColor()
+{
+    static float goldenRatioConjugate = 0.61803398875f;
+    static float hue = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // Random initial hue
+
+    hue = fmod(hue + goldenRatioConjugate, 1.0f); // Ensure hue stays within [0, 1]
+    float sat = 0.5 + fmod(hue + goldenRatioConjugate, 0.5f); // Ensure hue stays within [0.5, 1]
+    float val = 0.7 + fmod(sat + goldenRatioConjugate, 0.3f); // Ensure hue stays within [0.7, 1]
+
+    float r, g, b;
+    HSVtoRGB(hue, sat, val, r, g, b); // Convert HSV to RGB
+
+    return { r * 255, g * 255, b * 255, 255.0 };
+}
+
 class ImGuiPanelGuard
 {
   public:

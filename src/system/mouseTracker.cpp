@@ -46,6 +46,21 @@ bool MouseTracker::GetMouseUpPosition(int& x, int& y)
 	return false;
 }
 
+void MouseTracker::SetMousePosition(int x, int y, MouseClickState state)
+{
+	SetCursorPos(x, y);
+
+	if (state != MOUSE_MOVE)
+	{
+		INPUT input = {};
+		input.type = INPUT_MOUSE;
+		input.mi.dx = x;
+		input.mi.dy = y;
+		input.mi.dwFlags = state == MOUSE_DOWN ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+		SendInput(1, &input, sizeof(INPUT));
+	}
+}
+
 void MouseTracker::trackMouse()
 {
     while (_running)

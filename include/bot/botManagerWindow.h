@@ -16,10 +16,10 @@ class WindowCaptureService;
 class BotManagerWindow : public IBotWindow
 {
 public:
-	BotManagerWindow();
+	BotManagerWindow(GLFWwindow* window);
 	~BotManagerWindow();
 
-	virtual void Run() override;
+	virtual void Run(float deltaTime) override;
 
 private:
 	// Helper references
