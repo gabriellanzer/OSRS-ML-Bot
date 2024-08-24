@@ -12,7 +12,7 @@ add_requires("glfw", "glm", "glad", "fmt", "nativefiledialog-extended")
 
 -- Bot requirements
 add_requires("onnxruntime", {configs = {gpu = true, cuda_version = "12"}})
-add_requires("opencv")
+add_requires("opencv", "nlohmann_json")
 
 target("osrs-bot")
     set_kind("binary")
@@ -21,7 +21,7 @@ target("osrs-bot")
 	add_packages("imgui", "stb", "glfw", "glm", "glad", "fmt", "nativefiledialog-extended")
 
 	-- Bot packages
-	add_packages("onnxruntime", "opencv")
+	add_packages("onnxruntime", "opencv", "nlohmann_json")
 
 	add_includedirs("src", "include")
 	add_headerfiles("src/**.h", "include/**.h")

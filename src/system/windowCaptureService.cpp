@@ -3,6 +3,7 @@
 // Windows dependencies
 #include <wingdi.h>
 #include <GdiPlus.h>
+#include <winuser.h>
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "ws2_32.lib")
 
@@ -36,9 +37,36 @@ WindowCaptureService::~WindowCaptureService()
 }
 
 
-void WindowCaptureService::StartCapture(HDC srcHdc)
+void WindowCaptureService::StartCapture(HDC srcHdc, const char* adapterName)
 {
     if (_capturing) return;
+
+	// Copy adapter name to monitor info
+    MONITORINFOEX monitorInfo;
+	monitorInfo.cbSize = sizeof(MONITORINFOEX);
+	strcpy_s(monitorInfo.szDevice, adapterName);
+
+	// Fetch size from adapter name
+	EnumDisplayMonitors(NULL, NULL, [](HMONITOR monitor, HDC, LPRECT, LPARAM lparam) -> BOOL
+	{
+		MONITORINFOEX* paramInfo = (MONITORINFOEX*)lparam;
+
+		MONITORINFOEX monitorInfo;
+		monitorInfo.cbSize = sizeof(MONITORINFOEX);
+		GetMonitorInfo(monitor, &monitorInfo);
+
+		if (strcmp(monitorInfo.szDevice, paramInfo->szDevice) == 0)
+		{
+			*paramInfo = monitorInfo;
+			return FALSE;
+		}
+
+		return TRUE;
+	}, (LPARAM)&monitorInfo);
+
+    // Compute capture min and max points
+    _captureMin = cv::Point(monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top);
+    _captureMax = cv::Point(monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom);
 
     _srcHdc = srcHdc;
     _capturing = true;

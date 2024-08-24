@@ -16,16 +16,16 @@ MouseTracker::~MouseTracker()
 	_mouseThread.join();
 }
 
-void MouseTracker::GetMousePosition(int& x, int& y)
+void MouseTracker::GetMousePosition(cv::Point& pos)
 {
-	x = _mousePosition.x;
-	y = _mousePosition.y;
+	pos.x = _mousePosition.x;
+	pos.y = _mousePosition.y;
 }
 
-bool MouseTracker::GetMouseDownPosition(int& x, int& y)
+bool MouseTracker::GetMouseDownPosition(cv::Point& pos)
 {
-	x = _mouseDownPosition.x;
-	y = _mouseDownPosition.y;
+	pos.x = _mouseDownPosition.x;
+	pos.y = _mouseDownPosition.y;
 	if (_mouseDown)
 	{
 		_mouseDown = false;
@@ -34,10 +34,10 @@ bool MouseTracker::GetMouseDownPosition(int& x, int& y)
 	return false;
 }
 
-bool MouseTracker::GetMouseUpPosition(int& x, int& y)
+bool MouseTracker::GetMouseUpPosition(cv::Point& pos)
 {
-	x = _mouseUpPosition.x;
-	y = _mouseUpPosition.y;
+	pos.x = _mouseUpPosition.x;
+	pos.y = _mouseUpPosition.y;
 	if (_mouseUp)
 	{
 		_mouseUp = false;
@@ -46,16 +46,16 @@ bool MouseTracker::GetMouseUpPosition(int& x, int& y)
 	return false;
 }
 
-void MouseTracker::SetMousePosition(int x, int y, MouseClickState state)
+void MouseTracker::SetMousePosition(cv::Point pos, MouseClickState state)
 {
-	SetCursorPos(x, y);
+	SetCursorPos(pos.x, pos.y);
 
 	if (state != MOUSE_MOVE)
 	{
 		INPUT input = {};
 		input.type = INPUT_MOUSE;
-		input.mi.dx = x;
-		input.mi.dy = y;
+		input.mi.dx = pos.x;
+		input.mi.dy = pos.y;
 		input.mi.dwFlags = state == MOUSE_DOWN ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
 		SendInput(1, &input, sizeof(INPUT));
 	}

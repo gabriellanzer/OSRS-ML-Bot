@@ -15,10 +15,12 @@
 
 // Internal dependencies
 #include <system/windowCaptureService.h>
+#include <system/mouseMovementDB.h>
 #include <system/mouseTracker.h>
 #include <utils.h>
 
 TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::getInstance())
+	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance())
 {
 	_mouseTracker = new MouseTracker();
 
@@ -35,41 +37,65 @@ TrainingLabWindow::~TrainingLabWindow()
 	delete _mouseTracker;
 }
 
-static void drawMouseMovement(const MouseMovement& movement, cv::Mat& frame)
+static void drawMouseMovement(const MouseMovement& movement, cv::Mat& frame, int thickness = 2, cv::Scalar colorOverride = cv::Scalar(-1, -1, -1))
 {
+	// Fetch capture min and max points
+	auto [min, max] = WindowCaptureService::getInstance().GetCaptureDimensions();
+
+	cv::Scalar color = movement.color;
+	if (colorOverride != cv::Scalar(-1, -1, -1))
+	{
+		color = colorOverride;
+	}
+
 	// Draw markers for first and last points
 	if (!movement.points.empty())
 	{
 		cv::Point p1 = movement.points[0].point;
 		cv::Point p2 = movement.points.back().point;
+		// Clamp to windows coordinates
+		p1.x = std::clamp(p1.x, min.x, max.x - 1);
+		p1.y = std::clamp(p1.y, min.y, max.y - 1);
+		p2.x = std::clamp(p2.x, min.x, max.x - 1);
+		p2.y = std::clamp(p2.y, min.y, max.y - 1);
+		// Wrap around if negative
 		if (p1.x < 0) p1.x += frame.cols;
 		if (p1.y < 0) p1.y += frame.rows;
 		if (p2.x < 0) p2.x += frame.cols;
 		if (p2.y < 0) p2.y += frame.rows;
-		cv::drawMarker(frame, p1, movement.color, cv::MARKER_CROSS, 80, 2);
-		cv::drawMarker(frame, p2, movement.color, cv::MARKER_CROSS, 80, 2);
+		cv::drawMarker(frame, p1, color, cv::MARKER_CROSS, 80, thickness);
+		cv::drawMarker(frame, p2, color, cv::MARKER_CROSS, 80, thickness);
 	}
 	for (size_t i = 1; i < movement.points.size(); i++)
 	{
 		cv::Point p1 = movement.points[i - 1].point;
 		cv::Point p2 = movement.points[i].point;
+		// Clamp to windows coordinates
+		p1.x = std::clamp(p1.x, min.x, max.x - 1);
+		p1.y = std::clamp(p1.y, min.y, max.y - 1);
+		p2.x = std::clamp(p2.x, min.x, max.x - 1);
+		p2.y = std::clamp(p2.y, min.y, max.y - 1);
+		// Wrap around if negative
 		if (p1.x < 0) p1.x += frame.cols;
 		if (p1.y < 0) p1.y += frame.rows;
 		if (p2.x < 0) p2.x += frame.cols;
 		if (p2.y < 0) p2.y += frame.rows;
 		if (p1 == p2)
 		{
-			cv::circle(frame, p1, 0, movement.color, 2);
+			cv::circle(frame, p1, 0, color, thickness);
 		}
 		else
 		{
-			cv::line(frame, p1, p2, movement.color, 2);
+			cv::line(frame, p1, p2, color, thickness);
 		}
 	}
 }
 
 void TrainingLabWindow::Run(float deltaTime)
 {
+	// Fetch mouse-movements from the database
+	auto& mouseMovements = _mouseMovementDatabase.GetMovements();
+
 	// Abort signal is processed first
 	if (_mouseTracker->IsEscapePressed())
 	{
@@ -78,30 +104,30 @@ void TrainingLabWindow::Run(float deltaTime)
 		_curMouseMovement = nullptr;
 	}
 
-	_mouseTracker->GetMousePosition(_mousePosX, _mousePosY);
-	bool mouseUp 	= _mouseTracker->GetMouseUpPosition(_mouseUpX, _mouseUpY);
-	bool mouseDown	= _mouseTracker->GetMouseDownPosition(_mouseDownX, _mouseDownY);
+	_mouseTracker->GetMousePosition(_mousePos);
+	bool mouseUp 	= _mouseTracker->GetMouseUpPosition(_mouseUp);
+	bool mouseDown	= _mouseTracker->GetMouseDownPosition(_mouseDown);
 	if (_captureMouseMovement && mouseUp) // Finish last mouse-up movement and start a new one
 	{
 		if (_curMouseMovement != nullptr)
 		{
-			_curMouseMovement->AddPoint(cv::Point(_mouseDownX, _mouseDownY), deltaTime);
-			_curMouseMovement->isMouseDown = false;
+			_curMouseMovement->AddPoint(cv::Point(_mouseDown), deltaTime);
+			_curMouseMovement->clickState = MOUSE_UP;
 		}
-		_mouseMovements.push_back(MouseMovement());
-		_curMouseMovement = &_mouseMovements.back();
-		_curMouseMovement->AddPoint(cv::Point(_mouseUpX, _mouseUpY), deltaTime);
+		mouseMovements.push_back(MouseMovement());
+		_curMouseMovement = &mouseMovements.back();
+		_curMouseMovement->AddPoint(cv::Point(_mouseUp), deltaTime);
 		_curMouseMovement->color = generateRandomColor();
 	}
 	else if (_captureMouseMovement && mouseDown) // Finish last mouse-down movement and start a new one
 	{
 		if (_curMouseMovement != nullptr)
 		{
-			_curMouseMovement->AddPoint(cv::Point(_mouseDownX, _mouseDownY), deltaTime);
-			_curMouseMovement->isMouseDown = true;
+			_curMouseMovement->AddPoint(cv::Point(_mouseDown), deltaTime);
+			_curMouseMovement->clickState = MOUSE_DOWN;
 		}
-		_mouseMovements.push_back(MouseMovement());
-		_curMouseMovement = &_mouseMovements.back();
+		mouseMovements.push_back(MouseMovement());
+		_curMouseMovement = &mouseMovements.back();
 	}
 	else if (_captureMouseMovement && _curMouseMovement != nullptr) // Capture the mouse movement
 	{
@@ -110,14 +136,14 @@ void TrainingLabWindow::Run(float deltaTime)
 		{
 			lastPoint = &_curMouseMovement->points.back();
 		}
-		if (lastPoint != nullptr && lastPoint->point.x == _mousePosX && lastPoint->point.y == _mousePosY)
+		if (lastPoint != nullptr && lastPoint->point == _mousePos)
 		{
 			lastPoint->deltaTime += deltaTime;
 			lastPoint->deltaTime = std::min(lastPoint->deltaTime, _samePosThreshold); // Cap the delta time to 1 second
 		}
 		else
 		{
-			_curMouseMovement->AddPoint(cv::Point(_mousePosX, _mousePosY), deltaTime);
+			_curMouseMovement->AddPoint(_mousePos, deltaTime);
 		}
 	}
 
@@ -144,13 +170,13 @@ void TrainingLabWindow::Run(float deltaTime)
 			_internalTimer -= point.deltaTime;
 			if (_curMouseMovement->points.empty()) // Last point consumed
 			{
-				_mouseTracker->SetMousePosition(point.point.x, point.point.y, _curMouseMovement->isMouseDown ? MOUSE_DOWN : MOUSE_UP);
+				_mouseTracker->SetMousePosition(point.point, _curMouseMovement->clickState);
 				_playbackMouseMovements.erase(_playbackMouseMovements.begin());
 				_curMouseMovement = nullptr;
 			}
 			else
 			{
-				_mouseTracker->SetMousePosition(point.point.x, point.point.y);
+				_mouseTracker->SetMousePosition(point.point);
 			}
 		}
 	}
@@ -177,9 +203,9 @@ void TrainingLabWindow::Run(float deltaTime)
 				ImGuiPanelGuard statsPanel("Statistics Panel");
 
 				ImGui::SeparatorText("Mouse Movement");
-				ImGui::Text("Mouse position: (%i, %i)", _mousePosX, _mousePosY);
-				ImGui::Text("Mouse down position: (%i, %i)", _mouseDownX, _mouseDownY);
-				ImGui::Text("Mouse release position: (%i, %i)", _mouseUpX, _mouseUpY);
+				ImGui::Text("Mouse position: (%i, %i)", _mousePos.x, _mousePos.y);
+				ImGui::Text("Mouse down position: (%i, %i)", _mouseDown.x, _mouseDown.y);
+				ImGui::Text("Mouse release position: (%i, %i)", _mouseUp.x, _mouseUp.y);
 
 				ImGui::Text("Mouse Initial-End Distance: %.2f", _curMouseMovement == nullptr ? 0.0f : _curMouseMovement->IniEndDistance());
 
@@ -196,8 +222,8 @@ void TrainingLabWindow::Run(float deltaTime)
 				// Remove first and last movements when button clicked
 				if (ImGui::IsItemHovered() && (mouseDown || mouseUp) && _curMouseMovement != nullptr)
 				{
-					_mouseMovements.pop_back(); // Right before click (we process clicks before ui)
-					if (mouseDown) _mouseMovements.pop_back(); // Movement to click position
+					mouseMovements.pop_back(); // Right before click (we process clicks before ui)
+					if (mouseDown) mouseMovements.pop_back(); // Movement to click position
 					_curMouseMovement = nullptr;
 				}
 				ImGui::SameLine();
@@ -212,14 +238,14 @@ void TrainingLabWindow::Run(float deltaTime)
 					// Copy the movements to the playback movements
 					if (_playbackMouseMovement)
 					{
-						_playbackMouseMovements = _mouseMovements;
+						_playbackMouseMovements = mouseMovements;
 					}
 				}
 				// Remove first and last movements when button clicked
 				if (ImGui::IsItemHovered() && mouseDown && _curMouseMovement != nullptr)
 				{
-					_mouseMovements.pop_back(); // Right before click (we process clicks before ui)
-					_mouseMovements.pop_back(); // Movement to click position
+					mouseMovements.pop_back(); // Right before click (we process clicks before ui)
+					mouseMovements.pop_back(); // Movement to click position
 					_curMouseMovement = nullptr;
 				}
 
@@ -238,31 +264,45 @@ void TrainingLabWindow::Run(float deltaTime)
 
 				ImGui::Separator();
 				ImGui::Checkbox("Draw All Mouse Movements", &_drawMouseMovements);
+
 				ImGui::SameLine();
 				if (ImGui::Button("Delete All Movements"))
 				{
-					_mouseMovements.clear();
+					mouseMovements.clear();
 					_playbackMouseMovements.clear();
 					_curMouseMovement = nullptr;
 				}
+
+				const bool recordingOrPlaying = (_playbackMouseMovement || _captureMouseMovement);
+				ImGui::BeginDisabled(recordingOrPlaying);
+				if (ImGui::Button("Save Movements"))
+				{
+					_mouseMovementDatabase.SaveMovements();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Load Movements"))
+				{
+					_mouseMovementDatabase.LoadMovements();
+				}
+				ImGui::EndDisabled();
+
 				ImGui::TextUnformatted("Mouse Movements:");
 				ImGui::BeginChild("Mouse Movements", {0, 0}, true);
-				for (size_t i = 0; i < _mouseMovements.size(); i++)
+				for (size_t i = 0; i < mouseMovements.size(); i++)
 				{
-					const auto& movement = _mouseMovements[i];
+					const auto& movement = mouseMovements[i];
 					bool selected = _selMouseMovement == &movement;
-					const char* movementType = movement.isMouseDown ? "Mouse Down" : "Mouse Up";
 					float movementDuration = 0.0f;
 					for (const auto& point : movement.points)
 					{
 						movementDuration += point.deltaTime;
 					}
-					std::string label = fmt::format("Movement {} [{} points] [{:.2f} dist] [{} type] [{:.2f} seconds]",
+					const char* movementType = movement.clickState == MOUSE_DOWN ? "Mouse Down" : "Mouse Up";
+					std::string label = fmt::format("Movement {} [{} points] [{:.2f} dist] [{} type] [{:.2f}s]",
 								i, movement.points.size(), movement.IniEndDistance(), movementType, movementDuration);
 					if (ImGui::Selectable(label.c_str(), selected))
 					{
-						if (!(_playbackMouseMovement || _captureMouseMovement))
-							_selMouseMovement = &_mouseMovements[i];
+						if (!recordingOrPlaying) _selMouseMovement = &mouseMovements[i];
 					}
 					if (ImGui::IsItemHovered())
 					{
@@ -275,11 +315,11 @@ void TrainingLabWindow::Run(float deltaTime)
 				}
 				if (_selMouseMovement != nullptr && glfwGetKey(_nativeWindow, GLFW_KEY_DELETE) == GLFW_PRESS)
 				{
-					size_t rmvId = _selMouseMovement - _mouseMovements.data();
-					_mouseMovements.erase(_mouseMovements.begin() + rmvId);
+					size_t rmvId = _selMouseMovement - mouseMovements.data();
+					mouseMovements.erase(mouseMovements.begin() + rmvId);
 					_selMouseMovement = nullptr;
 				}
-				if (_mouseMovements.empty())
+				if (mouseMovements.empty())
 				{
 					ImGui::Text("No captured mouse-movement at the moment.");
 				}
@@ -299,13 +339,14 @@ void TrainingLabWindow::Run(float deltaTime)
 					// Draw mouse position on the frame
 					if (_drawMouseMovements)
 					{
-						for (const auto& movement : _mouseMovements)
+						for (const auto& movement : mouseMovements)
 						{
 							drawMouseMovement(movement, _frame);
 						}
 					}
 					if (_selMouseMovement != nullptr)
 					{
+						drawMouseMovement(*_selMouseMovement, _frame, 3);
 						drawMouseMovement(*_selMouseMovement, _frame);
 					}
 
@@ -335,7 +376,7 @@ void TrainingLabWindow::Run(float deltaTime)
 						// Get all distances
 						float minDist = FLT_MAX, maxDist = 0.0f, avgDist = 0.0f;
 						std::vector<float> distances;
-						for (const auto& movement : _mouseMovements)
+						for (const auto& movement : mouseMovements)
 						{
 							float distance = movement.IniEndDistance();
 							minDist = std::min(minDist, distance);
@@ -343,7 +384,7 @@ void TrainingLabWindow::Run(float deltaTime)
 							avgDist += distance;
 							distances.push_back(distance);
 						}
-						avgDist /= _mouseMovements.size();
+						avgDist /= mouseMovements.size();
 
 						// Compute histogram data
 						std::sort(distances.begin(), distances.end());
@@ -376,7 +417,7 @@ void TrainingLabWindow::Run(float deltaTime)
 						auto [availableWidth, availableHeight] = ImGui::GetContentRegionAvail();
 						float plotWidth = std::min(availableWidth, 600.0f);
 						ImGui::Text("Movement Distances:");
-						if (_mouseMovements.empty())
+						if (mouseMovements.empty())
 						{
 							ImGui::Text("No movements captured.");
 						}

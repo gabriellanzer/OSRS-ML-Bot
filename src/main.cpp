@@ -71,7 +71,7 @@ int main(int argc, char** argv)
 	std::cout << "Starting capture service...\n";
 	std::flush(std::cout);
 	WindowCaptureService& captureService = WindowCaptureService::getInstance();
-	captureService.StartCapture(hdc);
+	captureService.StartCapture(hdc, glfwGetWin32Adapter(trackingMonitor));
 
     // Create a windowed mode window and its OpenGL context
 	glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);

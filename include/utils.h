@@ -1,6 +1,7 @@
 #pragma once
 
 // Windows dependencies
+#include <windows.h>
 #include <winnls.h>
 
 // Std dependencies
@@ -191,6 +192,39 @@ inline cv::Scalar generateRandomColor()
     HSVtoRGB(hue, sat, val, r, g, b); // Convert HSV to RGB
 
     return { r * 255, g * 255, b * 255, 255.0 };
+}
+
+template<typename TType>
+bool binarySearch(TType* arr, int l, int r, TType x, int& outIndex)
+{
+	if (r >= l)
+	{
+		int mid = l + (r - l) / 2;
+
+		// If the element is present at the middle itself
+		if (arr[mid] == x)
+		{
+			outIndex = mid;
+			return true;
+		}
+
+		// If element is smaller than mid, then it can only be present in left subarray
+		if (arr[mid] > x)
+			return binarySearch(arr, l, mid - 1, x);
+
+		// Else the element can only be present in right subarray
+		return binarySearch(arr, mid + 1, r, x);
+	}
+
+	// We reach here when the element is not present in array
+	outIndex = l;
+	return false;
+}
+
+template<typename TType>
+bool binarySearch(TType* arr, int size, TType x)
+{
+	return binarySearch(arr, 0, size - 1, x);
 }
 
 class ImGuiPanelGuard

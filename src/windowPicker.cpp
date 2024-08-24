@@ -146,8 +146,8 @@ std::pair<HDC, GLFWmonitor*> pickMonitorDialog()
 	// Destroy the windows used for picking
 	for (auto& monitorInfo : monitorInfos)
 	{
-		delete monitorInfo.procData;
 		glfwDestroyWindow(monitorInfo.window);
+		delete monitorInfo.procData;
 	}
 
 	// Create HDC for the tracked monitor

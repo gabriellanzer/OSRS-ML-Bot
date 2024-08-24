@@ -17,11 +17,12 @@ class WindowCaptureService
   public:
 	static WindowCaptureService& getInstance();
 
-	void StartCapture(HDC srcHdc);
+	void StartCapture(HDC srcHdc, const char* adapterName);
 	void StopCapture();
 	bool IsCapturing() const;
 
 	cv::Mat GetLatestFrame();
+	std::pair<cv::Point, cv::Point> GetCaptureDimensions() const { return { _captureMin, _captureMax }; }
 
   private:
 	WindowCaptureService();
@@ -39,4 +40,5 @@ class WindowCaptureService
 	cv::Mat* _frontFrame;
 	cv::Mat* _backFrame;
 	HDC _srcHdc;
+	cv::Point _captureMin, _captureMax;
 };

@@ -6,12 +6,8 @@
 // Std Dependencies
 #include <thread>
 
-enum MouseClickState
-{
-	MOUSE_MOVE,
-	MOUSE_DOWN,
-	MOUSE_UP
-};
+// Internal Dependencies
+#include <system/mouseMovement.h>
 
 class MouseTracker
 {
@@ -21,11 +17,11 @@ public:
 	~MouseTracker();
 
 
-	void GetMousePosition(int& x, int& y);
-	bool GetMouseDownPosition(int& x, int& y);
-	bool GetMouseUpPosition(int& x, int& y);
+	void GetMousePosition(cv::Point& pos);
+	bool GetMouseDownPosition(cv::Point& pos);
+	bool GetMouseUpPosition(cv::Point& pos);
 
-	void SetMousePosition(int x, int y, MouseClickState state = MOUSE_MOVE);
+	void SetMousePosition(cv::Point pos, MouseClickState state = MOUSE_MOVE);
 
 	bool IsEscapePressed() { return GetAsyncKeyState(VK_ESCAPE) & 0x8000; }
 
