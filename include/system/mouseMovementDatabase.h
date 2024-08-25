@@ -14,7 +14,8 @@ class MouseMovementDatabase
 	void SaveMovements();
 	void LoadMovements();
 	void UpdateDatabase();
-	void QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, std::vector<MouseMovement>& outMovements);
+	void QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, MouseMovement& outMovements);
+	std::vector<MouseMovement> QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold);
 
 	std::vector<MouseMovement>& GetMovements() { return _mouseMovements; }
 
@@ -29,5 +30,12 @@ class MouseMovementDatabase
 
 	// Multiple arrays for query parameters per movement
 	std::vector<float> _relativeMouseAngles;
+	std::vector<float> _relativeMouseDistances;
+	std::vector<float> _relativeMouseRandomWeights;
+	std::vector<cv::Point> _relativeMouseTargetPoints;
 	std::vector<MouseMovement> _relativeMouseMovements;
+
+	// Query state
+	std::vector<int> _queryCandidatesIds;
+	std::vector<float> _queryCandidatesWeights;
 };

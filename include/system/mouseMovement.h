@@ -2,15 +2,13 @@
 
 // Std dependencies
 #include <vector>
+// Avoid symbol conflicts with std::min and std::max
+#undef min
+#undef max
+#include <algorithm>
 
 // Third party dependencies
 #include <opencv2/core.hpp>
-
-struct MousePoint
-{
-	cv::Point point;
-	float deltaTime;
-};
 
 enum MouseButton
 {
@@ -24,6 +22,12 @@ enum MouseClickState
 	MOUSE_MOVE,
 	MOUSE_DOWN,
 	MOUSE_UP
+};
+
+struct MousePoint
+{
+	cv::Point point;
+	float deltaTime;
 };
 
 struct MouseMovement
@@ -56,6 +60,8 @@ struct MouseMovement
 		cv::Point diff = points.back().point - points.front().point;
 		return atan2(diff.y, diff.x);
 	}
+
+	bool IsValid() const { return points.size() > 1; }
 
 	std::vector<MousePoint> points;
 	cv::Point minPoint, maxPoint;

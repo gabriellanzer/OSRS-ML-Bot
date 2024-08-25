@@ -1,37 +1,26 @@
 #pragma once
 
 // Windows dependencies
+#define NOMINMAX
 #include <windows.h>
 #include <winnls.h>
 
 // Std dependencies
 #include <string>
 
+// Avoid symbol conflicts with std::min and std::max
+#include <algorithm>
+
 // Third party dependencies
 #include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <glad/glad.h>
 
-#ifdef min
-#undef min
-#endif
-
-#ifdef max
-#undef max
-#endif
-
-template <typename TType>
-inline const TType& min(const TType& a, const TType& b)
-{
-	return a < b ? a : b;
-}
-
-template <typename TType>
-inline const TType& max(const TType& a, const TType& b)
-{
-	return a > b ? a : b;
-}
+// Internal dependencies
+#include <system/mouseMovement.h>
+#include <system/windowCaptureService.h>
 
 // Function to convert wide string to UTF-8
 inline std::string WideStringToUTF8(const std::wstring& wstr)
@@ -113,7 +102,6 @@ inline void drawScreenView(cv::Mat& _frame, uint32_t _frameTexId)
 inline void drawHorizontalSeparator(float& prevHeight, float& nextHeight, float availableSize, float minPrevHeight = 0, float minNextHeight = 0, float padding = 6.0f, const std::string separatorText = "")
 {
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-	bool done = false;
 	float delta = 0.0f;
 	ImGui::SetNextItemAllowOverlap();
 	ImVec2 curCursorPos = ImGui::GetCursorScreenPos();
@@ -121,7 +109,6 @@ inline void drawHorizontalSeparator(float& prevHeight, float& nextHeight, float 
 	if (ImGui::IsItemActive())
 	{
 		delta = ImGui::GetIO().MouseDelta.y;
-		done = true;
 	}
 
 	// Visible separator
@@ -148,13 +135,9 @@ inline void drawHorizontalSeparator(float& prevHeight, float& nextHeight, float 
 		ImGui::PopStyleColor(); // Reset the hover color
 	}
 
-	if (!done)
-	{
-		delta = 0;
-	}
 	float availableHeight = ImGui::GetContentRegionAvail().y;
-	prevHeight = max(minPrevHeight, min(availableSize - minNextHeight, prevHeight + delta));
-	nextHeight = max(minNextHeight, min(availableHeight, nextHeight - delta));
+	prevHeight = std::max(minPrevHeight, std::min(availableSize - minNextHeight, prevHeight + delta));
+	nextHeight = std::max(minNextHeight, std::min(availableHeight, nextHeight - delta));
 	ImGui::PopStyleVar();
 }
 
@@ -194,8 +177,48 @@ inline cv::Scalar generateRandomColor()
     return { r * 255, g * 255, b * 255, 255.0 };
 }
 
+inline void drawMouseMovement(const MouseMovement& movement, cv::Mat& frame, int thickness = 2, cv::Scalar colorOverride = cv::Scalar(-1, -1, -1))
+{
+	// Fetch capture min and max points
+	auto& captureService = WindowCaptureService::GetInstance();
+
+	cv::Scalar color = movement.color;
+	if (colorOverride != cv::Scalar(-1, -1, -1))
+	{
+		color = colorOverride;
+	}
+
+	// Draw markers for first and last points
+	if (!movement.points.empty())
+	{
+		cv::Point p1 = movement.points[0].point;
+		cv::Point p2 = movement.points.back().point;
+		// Clamp to windows coordinates
+		p1 = captureService.SystemToFrameCoordinates(p1, frame);
+		p2 = captureService.SystemToFrameCoordinates(p2, frame);
+		cv::drawMarker(frame, p1, color, cv::MARKER_CROSS, 80, thickness);
+		cv::drawMarker(frame, p2, color, cv::MARKER_CROSS, 80, thickness);
+	}
+	for (size_t i = 1; i < movement.points.size(); i++)
+	{
+		cv::Point p1 = movement.points[i - 1].point;
+		cv::Point p2 = movement.points[i].point;
+		// Clamp to windows coordinates
+		p1 = captureService.SystemToFrameCoordinates(p1, frame);
+		p2 = captureService.SystemToFrameCoordinates(p2, frame);
+		if (p1 == p2)
+		{
+			cv::circle(frame, p1, 0, color, thickness);
+		}
+		else
+		{
+			cv::line(frame, p1, p2, color, thickness);
+		}
+	}
+}
+
 template<typename TType>
-bool binarySearch(TType* arr, int l, int r, TType x, int& outIndex)
+inline bool binarySearch(TType* arr, int l, int r, TType x, int& outIndex)
 {
 	if (r >= l)
 	{
@@ -222,9 +245,75 @@ bool binarySearch(TType* arr, int l, int r, TType x, int& outIndex)
 }
 
 template<typename TType>
-bool binarySearch(TType* arr, int size, TType x)
+inline bool binarySearch(TType* arr, int size, TType x)
 {
 	return binarySearch(arr, 0, size - 1, x);
+}
+
+// Helper function to get the nth element from a pointer
+template<typename T>
+inline T& getNthElement(T* ptr, int n) {
+    return ptr[n];
+}
+
+// Insert sort with multiple auxiliary arrays and a functor (that takes the first array element) to sort by
+template<typename TType, typename TFunctor, typename... TArrs>
+inline void insertionSort(TType* arr, int size, TFunctor&& functor, TArrs*... arrays)
+{
+	for (int i = 1; i < size; i++)
+	{
+		TType key = arr[i];
+		std::tuple<TArrs...> arrKeys = std::make_tuple(getNthElement(arrays, i)...);
+		int j = i - 1;
+
+		// Move elements of arr[0..i-1], that are greater than key, to one position ahead of their current position
+		while (j >= 0 && functor(arr[j]) > functor(key))
+		{
+			arr[j + 1] = arr[j];
+			std::tie(getNthElement(arrays, j + 1)...) = std::tie(getNthElement(arrays, j)...);
+			j = j - 1;
+		}
+		arr[j + 1] = key;
+		std::tie(getNthElement(arrays, j + 1)...) = arrKeys;
+	}
+}
+
+// Insert sort with a functor (that takes the first array element) to sort by
+template<typename TType, typename TFunctor>
+inline void insertionSort(TType* arr, int size, TFunctor&& functor)
+{
+	for (int i = 1; i < size; i++)
+	{
+		TType key = arr[i];
+		int j = i - 1;
+
+		// Move elements of arr[0..i-1], that are greater than key, to one position ahead of their current position
+		while (j >= 0 && functor(arr[j]) > functor(key))
+		{
+			arr[j + 1] = arr[j];
+			j = j - 1;
+		}
+		arr[j + 1] = key;
+	}
+}
+
+// Insert sort
+template<typename TType>
+inline void insertionSort(TType* arr, int size)
+{
+	for (int i = 1; i < size; i++)
+	{
+		TType key = arr[i];
+		int j = i - 1;
+
+		// Move elements of arr[0..i-1], that are greater than key, to one position ahead of their current position
+		while (j >= 0 && arr[j] > key)
+		{
+			arr[j + 1] = arr[j];
+			j = j - 1;
+		}
+		arr[j + 1] = key;
+	}
 }
 
 class ImGuiPanelGuard

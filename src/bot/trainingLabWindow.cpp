@@ -15,15 +15,53 @@
 
 // Internal dependencies
 #include <system/windowCaptureService.h>
-#include <system/mouseMovementDB.h>
-#include <system/mouseTracker.h>
+#include <system/mouseMovementDatabase.h>
+#include <system/inputManager.h>
 #include <utils.h>
 
-TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::getInstance())
-	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance())
+void ComputeMovementsHistogram(const std::vector<MouseMovement>& mouseMovements, MouseClickState clickState,
+											  std::vector<float>& histogram, const int binWidth = 50)
 {
-	_mouseTracker = new MouseTracker();
+	// Get all distances
+	std::vector<float> distances;
+	distances.reserve(mouseMovements.size());
+	for (const auto& movement : mouseMovements)
+	{
+		if (movement.clickState != clickState)
+		{
+			continue;
+		}
 
+		distances.push_back(movement.IniEndDistance());
+	}
+
+	// Compute histogram data
+	std::sort(distances.begin(), distances.end());
+
+	// Clear now so we can early-out if there are no matches
+	histogram.clear();
+	if (distances.empty())
+	{
+		return;
+	}
+
+	// Compute number of bins from min and max distances
+	float minDistance = distances[0];
+	float maxDistance = distances.back();
+	int minBin = minDistance / binWidth;
+	int maxBin = maxDistance / binWidth;
+	int numBins = maxBin - minBin + 1;
+	histogram.resize(numBins);
+	for (const auto& dist : distances)
+	{
+		int bin = dist / binWidth - minBin;
+		histogram[bin] += 1;
+	}
+}
+
+TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::GetInstance())
+	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance()), _mouseTracker(InputManager::GetInstance())
+{
 	// Create a texture for the screen capture
 	glGenTextures(1, &_frameTexId);
 	glBindTexture(GL_TEXTURE_2D, _frameTexId);
@@ -34,61 +72,6 @@ TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _
 TrainingLabWindow::~TrainingLabWindow()
 {
 	glDeleteTextures(1, &_frameTexId);
-	delete _mouseTracker;
-}
-
-static void drawMouseMovement(const MouseMovement& movement, cv::Mat& frame, int thickness = 2, cv::Scalar colorOverride = cv::Scalar(-1, -1, -1))
-{
-	// Fetch capture min and max points
-	auto [min, max] = WindowCaptureService::getInstance().GetCaptureDimensions();
-
-	cv::Scalar color = movement.color;
-	if (colorOverride != cv::Scalar(-1, -1, -1))
-	{
-		color = colorOverride;
-	}
-
-	// Draw markers for first and last points
-	if (!movement.points.empty())
-	{
-		cv::Point p1 = movement.points[0].point;
-		cv::Point p2 = movement.points.back().point;
-		// Clamp to windows coordinates
-		p1.x = std::clamp(p1.x, min.x, max.x - 1);
-		p1.y = std::clamp(p1.y, min.y, max.y - 1);
-		p2.x = std::clamp(p2.x, min.x, max.x - 1);
-		p2.y = std::clamp(p2.y, min.y, max.y - 1);
-		// Wrap around if negative
-		if (p1.x < 0) p1.x += frame.cols;
-		if (p1.y < 0) p1.y += frame.rows;
-		if (p2.x < 0) p2.x += frame.cols;
-		if (p2.y < 0) p2.y += frame.rows;
-		cv::drawMarker(frame, p1, color, cv::MARKER_CROSS, 80, thickness);
-		cv::drawMarker(frame, p2, color, cv::MARKER_CROSS, 80, thickness);
-	}
-	for (size_t i = 1; i < movement.points.size(); i++)
-	{
-		cv::Point p1 = movement.points[i - 1].point;
-		cv::Point p2 = movement.points[i].point;
-		// Clamp to windows coordinates
-		p1.x = std::clamp(p1.x, min.x, max.x - 1);
-		p1.y = std::clamp(p1.y, min.y, max.y - 1);
-		p2.x = std::clamp(p2.x, min.x, max.x - 1);
-		p2.y = std::clamp(p2.y, min.y, max.y - 1);
-		// Wrap around if negative
-		if (p1.x < 0) p1.x += frame.cols;
-		if (p1.y < 0) p1.y += frame.rows;
-		if (p2.x < 0) p2.x += frame.cols;
-		if (p2.y < 0) p2.y += frame.rows;
-		if (p1 == p2)
-		{
-			cv::circle(frame, p1, 0, color, thickness);
-		}
-		else
-		{
-			cv::line(frame, p1, p2, color, thickness);
-		}
-	}
 }
 
 void TrainingLabWindow::Run(float deltaTime)
@@ -97,16 +80,16 @@ void TrainingLabWindow::Run(float deltaTime)
 	auto& mouseMovements = _mouseMovementDatabase.GetMovements();
 
 	// Abort signal is processed first
-	if (_mouseTracker->IsEscapePressed())
+	if (_mouseTracker.IsEscapePressed())
 	{
 		_captureMouseMovement = false;
 		_playbackMouseMovement = false;
 		_curMouseMovement = nullptr;
 	}
 
-	_mouseTracker->GetMousePosition(_mousePos);
-	bool mouseUp 	= _mouseTracker->GetMouseUpPosition(_mouseUp);
-	bool mouseDown	= _mouseTracker->GetMouseDownPosition(_mouseDown);
+	_mouseTracker.GetMousePosition(_mousePos);
+	bool mouseUp 	= _mouseTracker.GetMouseUpPosition(_mouseUp);
+	bool mouseDown	= _mouseTracker.GetMouseDownPosition(_mouseDown);
 	if (_captureMouseMovement && mouseUp) // Finish last mouse-up movement and start a new one
 	{
 		if (_curMouseMovement != nullptr)
@@ -170,13 +153,13 @@ void TrainingLabWindow::Run(float deltaTime)
 			_internalTimer -= point.deltaTime;
 			if (_curMouseMovement->points.empty()) // Last point consumed
 			{
-				_mouseTracker->SetMousePosition(point.point, _curMouseMovement->clickState);
+				_mouseTracker.SetMousePosition(point.point, _curMouseMovement->clickState);
 				_playbackMouseMovements.erase(_playbackMouseMovements.begin());
 				_curMouseMovement = nullptr;
 			}
 			else
 			{
-				_mouseTracker->SetMousePosition(point.point);
+				_mouseTracker.SetMousePosition(point.point);
 			}
 		}
 	}
@@ -191,7 +174,7 @@ void TrainingLabWindow::Run(float deltaTime)
 
 		if (ImGui::BeginTable("##trainingTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable))
 		{
-			float minTasksPanelWidth = max(200.0f, ImGui::GetContentRegionAvail().x * 0.2f);
+			float minTasksPanelWidth = std::max(200.0f, ImGui::GetContentRegionAvail().x * 0.2f);
 			ImGui::TableSetupColumn("##statisticsPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel, minTasksPanelWidth);
 			ImGui::TableSetupColumn("##analysisPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel);
 
@@ -332,7 +315,7 @@ void TrainingLabWindow::Run(float deltaTime)
 				{
 					const float totalHeight = ImGui::GetContentRegionAvail().y;
 					const float minHeight = totalHeight * 0.2f;
-					static float screenViewHeight = max(300.0f, totalHeight * 0.6f); // Initial height
+					static float screenViewHeight = std::max(300.0f, totalHeight * 0.6f); // Initial height
 					static float analysisPanelHeight; // Initial height
 					ImGui::TableSetupColumn("##screenView", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel, 0.0f, 0.0f);
 
@@ -346,7 +329,9 @@ void TrainingLabWindow::Run(float deltaTime)
 					}
 					if (_selMouseMovement != nullptr)
 					{
-						drawMouseMovement(*_selMouseMovement, _frame, 3);
+						// Draw movement outline first
+						drawMouseMovement(*_selMouseMovement, _frame, 4, cv::Scalar(255, 255, 255));
+						// Then draw the movement
 						drawMouseMovement(*_selMouseMovement, _frame);
 					}
 
@@ -370,52 +355,8 @@ void TrainingLabWindow::Run(float deltaTime)
 					ImGui::TableNextRow();
 					ImGui::TableNextColumn();
 					{
-						ImGuiPanelGuard analysisPanel("Analysis Panel", { 0, analysisPanelHeight });
+						ImGuiPanelGuard analysisPanel("Analysis Panel", { 0, analysisPanelHeight - 10 });
 
-						// TODO: optimize this
-						// Get all distances
-						float minDist = FLT_MAX, maxDist = 0.0f, avgDist = 0.0f;
-						std::vector<float> distances;
-						for (const auto& movement : mouseMovements)
-						{
-							float distance = movement.IniEndDistance();
-							minDist = std::min(minDist, distance);
-							maxDist = std::max(maxDist, distance);
-							avgDist += distance;
-							distances.push_back(distance);
-						}
-						avgDist /= mouseMovements.size();
-
-						// Compute histogram data
-						std::sort(distances.begin(), distances.end());
-
-						std::map<float, int> histogram;
-						float minHeight = FLT_MAX, maxHeight = 0;
-						const float bin_width = 50;
-						for (const auto& dist : distances)
-						{
-							float bin = std::floor(dist / bin_width) * bin_width;
-							++histogram[bin];
-							minHeight = std::min(minHeight, (float)histogram[bin]);
-							maxHeight = std::max(maxHeight, (float)histogram[bin]);
-						}
-						minHeight -= 1; // Show 1-sized elements
-						maxHeight += 4; // Add some vertical padding
-						std::vector<float> histogramDistData;
-						std::vector<float> histogramCountData;
-						histogramDistData.reserve(histogram.size());
-						histogramCountData.reserve(histogram.size());
-						for (const auto& [dist, count] : histogram)
-						{
-							// Find the insert position based on distance
-							auto it = std::lower_bound(histogramDistData.begin(), histogramDistData.end(), dist);
-							auto insertDist = std::distance(histogramDistData.begin(), it);
-							histogramDistData.insert(it, dist);
-							histogramCountData.insert(histogramCountData.begin() + insertDist, count);
-						}
-
-						auto [availableWidth, availableHeight] = ImGui::GetContentRegionAvail();
-						float plotWidth = std::min(availableWidth, 600.0f);
 						ImGui::Text("Movement Distances:");
 						if (mouseMovements.empty())
 						{
@@ -423,10 +364,27 @@ void TrainingLabWindow::Run(float deltaTime)
 						}
 						else
 						{
-							ImGui::Text("Min [%.2f] Max [%.2f] Avg [%.2f]", minDist, maxDist, avgDist);
-							ImGui::Dummy({ (availableWidth - plotWidth) / 2.0f, 0 }); ImGui::SameLine();
-							ImGui::PlotHistogram("##histogram", histogramCountData.data(), histogramCountData.size(),
-								0, "Number of paths by distance (granularity = 50px)", minHeight, maxHeight, ImVec2(plotWidth, availableHeight * 0.9f));
+							// Compute histograms
+							std::vector<float> mouseUpHistogram;
+							std::vector<float> mouseDownHistogram;
+							ComputeMovementsHistogram(mouseMovements, MOUSE_UP, mouseUpHistogram);
+							ComputeMovementsHistogram(mouseMovements, MOUSE_DOWN, mouseDownHistogram);
+
+							auto [availableWidth, availableHeight] = ImGui::GetContentRegionAvail();
+							float plotWidth = std::min(availableWidth, 600.0f);
+
+							float paddingWidth = (availableWidth - plotWidth * 2) / 3.0f;
+							ImGui::Dummy({ paddingWidth, 0 }); ImGui::SameLine();
+
+							ImGui::PlotHistogram("##histogram", mouseDownHistogram.data(), mouseDownHistogram.size(),
+											0, "Number of paths by distance (type = MOUSE_DOWN, granularity = 50px)",
+											0.0f, FLT_MAX, ImVec2(plotWidth, availableHeight * 0.9f));
+							ImGui::SameLine();
+
+							ImGui::Dummy({ paddingWidth, 0 }); ImGui::SameLine();
+							ImGui::PlotHistogram("##histogram", mouseUpHistogram.data(), mouseUpHistogram.size(),
+											0, "Number of paths by distance (type = MOUSE_UP, granularity = 50px)",
+											0.0f, FLT_MAX, ImVec2(plotWidth, availableHeight * 0.9f));
 						}
 					}
 

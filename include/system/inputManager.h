@@ -1,6 +1,7 @@
 #pragma once
 
 // Windows Dependencies
+#define NOMINMAX
 #include <windows.h>
 
 // Std Dependencies
@@ -9,13 +10,20 @@
 // Internal Dependencies
 #include <system/mouseMovement.h>
 
-class MouseTracker
+class InputManager
 {
 public:
-	// Pooling rate (in Hz) at which mouse data is refreshed
-	MouseTracker(uint32_t poolingRate = 60);
-	~MouseTracker();
+	static InputManager& GetInstance()
+	{
+		static InputManager instance;
+		assert(instance._running && "Trying to access InputManager after it has been shutdown!");
+		return instance;
+	}
 
+	void Initialize();
+	void Shutdown();
+
+	void SetPoolingRate(uint32_t rate) { _poolingRate = rate; }
 
 	void GetMousePosition(cv::Point& pos);
 	bool GetMouseDownPosition(cv::Point& pos);
@@ -23,9 +31,12 @@ public:
 
 	void SetMousePosition(cv::Point pos, MouseClickState state = MOUSE_MOVE);
 
-	bool IsEscapePressed() { return GetAsyncKeyState(VK_ESCAPE) & 0x8000; }
+	bool IsEscapePressed();
 
 private:
+	InputManager();
+	~InputManager();
+
 	void trackMouse();
 
 	bool _mouseDown = false;
@@ -41,6 +52,7 @@ private:
 	POINT _mouseDownPosition;
 	POINT _mouseUpPosition;
 
+	// Pooling rate (in Hz) at which mouse data is refreshed
 	uint32_t _poolingRate = 60;
 
 	std::thread _mouseThread;

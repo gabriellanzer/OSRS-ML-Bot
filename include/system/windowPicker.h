@@ -1,6 +1,7 @@
 #pragma once
 
 // Windows Dependencies
+#define NOMINMAX
 #include <windows.h>
 
 // Third Party Dependencies

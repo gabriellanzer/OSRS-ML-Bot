@@ -22,7 +22,7 @@ class TrainingLabWindow : public IBotWindow
 	// Helper references
 	class WindowCaptureService& _captureService;
 	class MouseMovementDatabase& _mouseMovementDatabase;
-	class MouseTracker* _mouseTracker;
+	class InputManager& _mouseTracker;
 
 	// Internal state
 	cv::Mat _frame;

@@ -20,7 +20,7 @@
 
 // Internal dependencies
 #include <system/windowPicker.h>
-#include <system/mouseTracker.h>
+#include <system/inputManager.h>
 #include <system/windowCaptureService.h>
 
 #include <utils.h>
@@ -70,7 +70,7 @@ int main(int argc, char** argv)
 
 	std::cout << "Starting capture service...\n";
 	std::flush(std::cout);
-	WindowCaptureService& captureService = WindowCaptureService::getInstance();
+	WindowCaptureService& captureService = WindowCaptureService::GetInstance();
 	captureService.StartCapture(hdc, glfwGetWin32Adapter(trackingMonitor));
 
     // Create a windowed mode window and its OpenGL context
@@ -217,7 +217,7 @@ int main(int argc, char** argv)
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-	// Stop capturing before deleting window handle
+	// (IMPORTANT) Stop capturing before deleting window handle
 	captureService.StopCapture();
 
 	DeleteDC(hdc);

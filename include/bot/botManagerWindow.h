@@ -10,9 +10,6 @@
 #include <ml/onnxruntimeInference.h>
 #include <bot/ibotwindow.h>
 
-// Forward declarations
-class WindowCaptureService;
-
 class BotManagerWindow : public IBotWindow
 {
 public:
@@ -22,8 +19,12 @@ public:
 	virtual void Run(float deltaTime) override;
 
 private:
+	void runBotInference(cv::Mat& frame);
+
 	// Helper references
-	WindowCaptureService& _captureService;
+	class InputManager& _mouseTracker;
+	class WindowCaptureService& _captureService;
+	class MouseMovementDatabase& _mouseMovementDatabase;
 
 	// Internal state
 	wchar_t* _modelPath = nullptr;

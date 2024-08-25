@@ -14,11 +14,16 @@
 
 // Internal dependencies
 #include <system/windowCaptureService.h>
+#include <system/mouseMovementDatabase.h>
+#include <system/inputManager.h>
 #include <ml/onnxruntimeInference.h>
 #include <utils.h>
 
 
-BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::getInstance())
+BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window)
+	, _mouseTracker(InputManager::GetInstance())
+	, _captureService(WindowCaptureService::GetInstance())
+	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance())
 {
 	// Create a texture for the screen capture
 	glGenTextures(1, &_frameTexId);
@@ -36,39 +41,18 @@ BotManagerWindow::~BotManagerWindow()
 	glDeleteTextures(1, &_frameTexId);
 }
 
-void runBotInference(cv::Mat& image, YOLOInterfaceBase* model, std::vector<YoloDetectionBox>& detections)
-{
-	// Run YOLO inference
-	model->Inference(image, detections);
-
-	// TODO: Draw using ImGui or OpenGL (for performance),
-	// and move this to a proper wrapper class per model
-	// Draw rectangles on the image
-	for (const auto& detection : detections)
-	{
-		cv::Rect rect(detection.x, detection.y, detection.w, detection.h);
-
-		std::string label;
-		cv::Scalar color = cv::Scalar(0, 0, 0);
-		if (detection.classId == 0) { color = cv::Scalar(0, 128, 0);		label = "Adamant";	};
-		if (detection.classId == 1) { color = cv::Scalar(79, 69, 54);		label = "Coal";		};
-		if (detection.classId == 2) { color = cv::Scalar(51, 115, 184); 	label = "Copper";	};
-		if (detection.classId == 3) { color = cv::Scalar(34, 34, 178);		label = "Iron";		};
-		if (detection.classId == 4) { color = cv::Scalar(180, 130, 70); 	label = "Mithril";	};
-		if (detection.classId == 5) { color = cv::Scalar(192, 192, 192);	label = "Silver";	};
-		if (detection.classId == 6) { color = cv::Scalar(193, 205, 205);	label = "Tin";		};
-		if (detection.classId == 7) { color = cv::Scalar(0, 0, 0);			label = "Wasted";	};
-		cv::rectangle(image, rect, color, 2);
-		cv::putText(image, label, rect.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
-	}
-}
-
 void BotManagerWindow::Run(float deltaTime)
 {
 	// Fetch a new copy of the image
+	_frame = _captureService.GetLatestFrame();
+
+	if (_isBotRunning)
+	{
+		runBotInference(_frame);
+	}
+
 	if (ImGui::Begin("Bot", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 	{
-		_frame = _captureService.GetLatestFrame();
 		ImGui::SeparatorText("Welcome to the Bot Manager!");
 
 		if (ImGui::BeginTable("##botTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable))
@@ -122,6 +106,7 @@ void BotManagerWindow::Run(float deltaTime)
 						if (ImGui::Button("Start Bot"))
 						{
 							_isBotRunning = true;
+							_mouseMovementDatabase.LoadMovements();
 						}
 						ImGui::EndDisabled();
 						if (isModelUnloaded && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -146,7 +131,7 @@ void BotManagerWindow::Run(float deltaTime)
 							_model->LoadModel(true, _modelPath);
 
 							// And run warm-up inference
-							runBotInference(_frame, _model, _detections);
+							runBotInference(_frame);
 						}
 						ImGui::EndDisabled();
 						if (_modelPath == nullptr && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -201,11 +186,6 @@ void BotManagerWindow::Run(float deltaTime)
 							_isBotRunning = false;
 						}
 					}
-
-					if (_isBotRunning)
-					{
-						runBotInference(_frame, _model, _detections);
-					}
 				}
 
 				{
@@ -216,5 +196,79 @@ void BotManagerWindow::Run(float deltaTime)
 			ImGui::EndTable();
 		}
 		ImGui::End();
+	}
+}
+
+void BotManagerWindow::runBotInference(cv::Mat& frame)
+{
+	// Run YOLO inference
+	_model->Inference(frame, _detections);
+
+	// TODO: Draw using ImGui or OpenGL (for performance),
+	// and move this to a proper wrapper class per model
+	// Draw rectangles on the image frame
+	for (const auto& detection : _detections)
+	{
+		cv::Rect rect(detection.x, detection.y, detection.w, detection.h);
+
+		std::string label;
+		cv::Scalar color = cv::Scalar(0, 0, 0);
+		if (detection.classId == 0) { color = cv::Scalar(0, 128, 0);		label = "Adamant";	};
+		if (detection.classId == 1) { color = cv::Scalar(79, 69, 54);		label = "Coal";		};
+		if (detection.classId == 2) { color = cv::Scalar(51, 115, 184); 	label = "Copper";	};
+		if (detection.classId == 3) { color = cv::Scalar(34, 34, 178);		label = "Iron";		};
+		if (detection.classId == 4) { color = cv::Scalar(180, 130, 70); 	label = "Mithril";	};
+		if (detection.classId == 5) { color = cv::Scalar(192, 192, 192);	label = "Silver";	};
+		if (detection.classId == 6) { color = cv::Scalar(193, 205, 205);	label = "Tin";		};
+		if (detection.classId == 7) { color = cv::Scalar(0, 0, 0);			label = "Wasted";	};
+		cv::rectangle(frame, rect, color, 2);
+		cv::putText(frame, label, rect.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+	}
+
+	// Update mouse movement database
+	MouseMovementDatabase& mouseMovementDatabase = MouseMovementDatabase::GetInstance();
+	mouseMovementDatabase.UpdateDatabase();
+
+	// TEST: Fetch closes copper ore to center of screen (player) and
+	// query a mouse movement from current mouse position to that point
+	cv::Point playerPos(frame.cols / 2, frame.rows / 2);
+	cv::Point closestCopperPos;
+	float closestCopperRadius = 0.0f;
+	float closestCopperDistance = FLT_MAX;
+	for (const auto& detection : _detections)
+	{
+		if (detection.classId != 2) continue; // Copper
+
+		const float halfWidth = detection.w / 2;
+		const float halfHeight = detection.h / 2;
+		cv::Point copperPos(detection.x + halfWidth, detection.y + halfHeight);
+		float distance = cv::norm(playerPos - copperPos);
+		if (distance < closestCopperDistance)
+		{
+			closestCopperDistance = distance;
+			closestCopperPos = copperPos;
+			closestCopperRadius = std::min(halfWidth, halfHeight);
+		}
+	}
+
+	// If no copper ore was found, return
+	if (closestCopperRadius == 0.0f) return;
+
+	// Fetch mouse position for query
+	cv::Point mousePos;
+	InputManager& mouseTracker = InputManager::GetInstance();
+	mouseTracker.GetMousePosition(mousePos);
+
+	// Convert target pos from image frame coordinates to system coordinates
+	WindowCaptureService& screenCaptureService = WindowCaptureService::GetInstance();
+	closestCopperPos = screenCaptureService.FrameToSystemCoordinates(closestCopperPos, frame);
+
+	// Query mouse movement from current mouse
+	MouseMovement bestMovement;
+	mouseMovementDatabase.QueryMovement(mousePos, closestCopperPos, closestCopperRadius, bestMovement);
+
+	if (bestMovement.IsValid())
+	{
+		drawMouseMovement(bestMovement, frame);
 	}
 }

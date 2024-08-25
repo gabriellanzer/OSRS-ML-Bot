@@ -9,12 +9,6 @@
 
 static ULONG_PTR s_gdiplusToken;
 
-WindowCaptureService& WindowCaptureService::getInstance()
-{
-    static WindowCaptureService instance;
-    return instance;
-}
-
 WindowCaptureService::WindowCaptureService() : _capturing(false), _srcHdc(nullptr)
 {
 	// Initialize GDI+
