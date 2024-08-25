@@ -19,19 +19,13 @@
 #include <system/inputManager.h>
 #include <utils.h>
 
-void ComputeMovementsHistogram(const std::vector<MouseMovement>& mouseMovements, MouseClickState clickState,
-											  std::vector<float>& histogram, const int binWidth = 50)
+void ComputeMovementsHistogram(const std::vector<MouseMovement>& mouseMovements, std::vector<float>& histogram, const int binWidth = 50)
 {
 	// Get all distances
 	std::vector<float> distances;
 	distances.reserve(mouseMovements.size());
 	for (const auto& movement : mouseMovements)
 	{
-		if (movement.clickState != clickState)
-		{
-			continue;
-		}
-
 		distances.push_back(movement.IniEndDistance());
 	}
 
@@ -60,7 +54,7 @@ void ComputeMovementsHistogram(const std::vector<MouseMovement>& mouseMovements,
 }
 
 TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::GetInstance())
-	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance()), _mouseTracker(InputManager::GetInstance())
+	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance()), _inputManager(InputManager::GetInstance())
 {
 	// Create a texture for the screen capture
 	glGenTextures(1, &_frameTexId);
@@ -80,37 +74,33 @@ void TrainingLabWindow::Run(float deltaTime)
 	auto& mouseMovements = _mouseMovementDatabase.GetMovements();
 
 	// Abort signal is processed first
-	if (_mouseTracker.IsEscapePressed())
+	if (_inputManager.IsEscapePressed())
 	{
 		_captureMouseMovement = false;
-		_playbackMouseMovement = false;
 		_curMouseMovement = nullptr;
+		_playbackMouseMovement = false;
+		// Make sure we release the mouse click if we are stopping playback
+		if (_playbackClickState == MOUSE_CLICK_DOWN)
+		{
+			_inputManager.SetMousePosition(_mousePos, MOUSE_BUTTON_LEFT, MOUSE_CLICK_UP);
+		}
+		_playbackClickState = MOUSE_CLICK_NONE;
 	}
 
-	_mouseTracker.GetMousePosition(_mousePos);
-	bool mouseUp 	= _mouseTracker.GetMouseUpPosition(_mouseUp);
-	bool mouseDown	= _mouseTracker.GetMouseDownPosition(_mouseDown);
-	if (_captureMouseMovement && mouseUp) // Finish last mouse-up movement and start a new one
+	_inputManager.GetMousePosition(_mousePos);
+	// TODO: Track other button states
+	bool mouseUp 	= _inputManager.GetMouseUpPosition(_mouseUp, MOUSE_BUTTON_LEFT);
+	bool mouseDown	= _inputManager.GetMouseDownPosition(_mouseDown, MOUSE_BUTTON_LEFT);
+	if (_captureMouseMovement && (mouseUp || mouseDown)) // Finish last mouse movement and start a new one
 	{
 		if (_curMouseMovement != nullptr)
 		{
-			_curMouseMovement->AddPoint(cv::Point(_mouseDown), deltaTime);
-			_curMouseMovement->clickState = MOUSE_UP;
+			_curMouseMovement->AddPoint(cv::Point(mouseUp ? _mouseUp : _mouseDown), deltaTime);
 		}
 		mouseMovements.push_back(MouseMovement());
 		_curMouseMovement = &mouseMovements.back();
-		_curMouseMovement->AddPoint(cv::Point(_mouseUp), deltaTime);
+		_curMouseMovement->AddPoint(cv::Point(mouseUp ? _mouseUp : _mouseDown), deltaTime);
 		_curMouseMovement->color = generateRandomColor();
-	}
-	else if (_captureMouseMovement && mouseDown) // Finish last mouse-down movement and start a new one
-	{
-		if (_curMouseMovement != nullptr)
-		{
-			_curMouseMovement->AddPoint(cv::Point(_mouseDown), deltaTime);
-			_curMouseMovement->clickState = MOUSE_DOWN;
-		}
-		mouseMovements.push_back(MouseMovement());
-		_curMouseMovement = &mouseMovements.back();
 	}
 	else if (_captureMouseMovement && _curMouseMovement != nullptr) // Capture the mouse movement
 	{
@@ -134,32 +124,39 @@ void TrainingLabWindow::Run(float deltaTime)
 	if (_playbackMouseMovements.empty())
 	{
 		_playbackMouseMovement = false;
+
+		// Make sure we release the mouse click if we are stopping playback
+		if (_playbackClickState == MOUSE_CLICK_DOWN)
+		{
+			_inputManager.SetMousePosition(_mousePos, MOUSE_BUTTON_LEFT, MOUSE_CLICK_UP);
+		}
+		_playbackClickState = MOUSE_CLICK_NONE;
 	}
 	if (_playbackMouseMovement)
 	{
-		_internalTimer += deltaTime;
 		if (_curMouseMovement == nullptr) // Pick first movement
 		{
 			_curMouseMovement = &_playbackMouseMovements[0];
 		}
 
 		// Consume the movement (but only if point time is up)
-		const MousePoint point = _curMouseMovement->points[0];
-		if (_internalTimer >= point.deltaTime)
+		MousePoint point = _curMouseMovement->points[0];
+		point.deltaTime -= deltaTime;
+		if (point.deltaTime <= 0.0f) // Consume point
 		{
 			_curMouseMovement->points.erase(_curMouseMovement->points.begin());
-
-			// TODO: take in account release
-			_internalTimer -= point.deltaTime;
 			if (_curMouseMovement->points.empty()) // Last point consumed
 			{
-				_mouseTracker.SetMousePosition(point.point, _curMouseMovement->clickState);
+				if (_playbackClickState == MOUSE_CLICK_NONE) _playbackClickState = MOUSE_CLICK_DOWN;
+				else _playbackClickState = (MouseClickState)(1 - _playbackClickState); // Flip state
+				_inputManager.SetMousePosition(point.point, MOUSE_BUTTON_LEFT, _playbackClickState);
+
 				_playbackMouseMovements.erase(_playbackMouseMovements.begin());
 				_curMouseMovement = nullptr;
 			}
 			else
 			{
-				_mouseTracker.SetMousePosition(point.point);
+				_inputManager.SetMousePosition(point.point);
 			}
 		}
 	}
@@ -200,6 +197,12 @@ void TrainingLabWindow::Run(float deltaTime)
 					if (_captureMouseMovement)
 					{
 						_playbackMouseMovement = false;
+						// Make sure we release the mouse click if we are stopping playback
+						if (_playbackClickState == MOUSE_CLICK_DOWN)
+						{
+							_inputManager.SetMousePosition(_mousePos, MOUSE_BUTTON_LEFT, MOUSE_CLICK_UP);
+						}
+						_playbackClickState = MOUSE_CLICK_NONE;
 					}
 				}
 				// Remove first and last movements when button clicked
@@ -280,9 +283,8 @@ void TrainingLabWindow::Run(float deltaTime)
 					{
 						movementDuration += point.deltaTime;
 					}
-					const char* movementType = movement.clickState == MOUSE_DOWN ? "Mouse Down" : "Mouse Up";
-					std::string label = fmt::format("Movement {} [{} points] [{:.2f} dist] [{} type] [{:.2f}s]",
-								i, movement.points.size(), movement.IniEndDistance(), movementType, movementDuration);
+					std::string label = fmt::format("Movement {} [{} points] [{:.2f} dist] [{:.2f}s]",
+								i, movement.points.size(), movement.IniEndDistance(), movementDuration);
 					if (ImGui::Selectable(label.c_str(), selected))
 					{
 						if (!recordingOrPlaying) _selMouseMovement = &mouseMovements[i];
@@ -367,23 +369,15 @@ void TrainingLabWindow::Run(float deltaTime)
 							// Compute histograms
 							std::vector<float> mouseUpHistogram;
 							std::vector<float> mouseDownHistogram;
-							ComputeMovementsHistogram(mouseMovements, MOUSE_UP, mouseUpHistogram);
-							ComputeMovementsHistogram(mouseMovements, MOUSE_DOWN, mouseDownHistogram);
+							ComputeMovementsHistogram(mouseMovements, mouseUpHistogram);
 
 							auto [availableWidth, availableHeight] = ImGui::GetContentRegionAvail();
-							float plotWidth = std::min(availableWidth, 600.0f);
+							float plotWidth = std::max(availableWidth * 0.7f, 400.0f);
 
-							float paddingWidth = (availableWidth - plotWidth * 2) / 3.0f;
+							float paddingWidth = (availableWidth - plotWidth) / 2.0f;
 							ImGui::Dummy({ paddingWidth, 0 }); ImGui::SameLine();
-
 							ImGui::PlotHistogram("##histogram", mouseDownHistogram.data(), mouseDownHistogram.size(),
 											0, "Number of paths by distance (type = MOUSE_DOWN, granularity = 50px)",
-											0.0f, FLT_MAX, ImVec2(plotWidth, availableHeight * 0.9f));
-							ImGui::SameLine();
-
-							ImGui::Dummy({ paddingWidth, 0 }); ImGui::SameLine();
-							ImGui::PlotHistogram("##histogram", mouseUpHistogram.data(), mouseUpHistogram.size(),
-											0, "Number of paths by distance (type = MOUSE_UP, granularity = 50px)",
 											0.0f, FLT_MAX, ImVec2(plotWidth, availableHeight * 0.9f));
 						}
 					}

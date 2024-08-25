@@ -22,8 +22,6 @@ void MouseMovementDatabase::SaveMovements()
 	{
 		nlohmann::json jMovement;
 		jMovement["color"] = { movement.color[0], movement.color[1], movement.color[2] };
-		jMovement["clickState"] = static_cast<uint8_t>(movement.clickState);
-		jMovement["button"] = static_cast<uint8_t>(movement.button);
 		jMovement["points"] = nlohmann::json::array();
 		for (const auto& point : movement.points)
 		{
@@ -53,8 +51,6 @@ void MouseMovementDatabase::LoadMovements()
 		MouseMovement movement;
 		auto& color = jMovement["color"];
 		movement.color = cv::Scalar(color[0], color[1], color[2], 255);
-		movement.clickState = static_cast<MouseClickState>(jMovement["clickState"]);
-		movement.button = static_cast<MouseButton>(jMovement["button"]);
 		for (const auto& jPoint : jMovement["points"])
 		{
 			movement.AddPoint(cv::Point(jPoint["x"], jPoint["y"]), jPoint["deltaTime"]);

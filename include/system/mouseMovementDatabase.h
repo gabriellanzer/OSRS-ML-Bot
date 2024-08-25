@@ -15,6 +15,8 @@ class MouseMovementDatabase
 	void LoadMovements();
 	void UpdateDatabase();
 	void QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, MouseMovement& outMovements);
+
+	// Just for testing purposes
 	std::vector<MouseMovement> QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold);
 
 	std::vector<MouseMovement>& GetMovements() { return _mouseMovements; }

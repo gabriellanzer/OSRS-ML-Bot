@@ -21,7 +21,7 @@
 
 
 BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window)
-	, _mouseTracker(InputManager::GetInstance())
+	, _inputManager(InputManager::GetInstance())
 	, _captureService(WindowCaptureService::GetInstance())
 	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance())
 {
@@ -46,9 +46,15 @@ void BotManagerWindow::Run(float deltaTime)
 	// Fetch a new copy of the image
 	_frame = _captureService.GetLatestFrame();
 
+	if (_inputManager.IsEscapePressed())
+	{
+		_isBotRunning = false;
+		_curTargetBoxState = nullptr;
+	}
+
 	if (_isBotRunning)
 	{
-		runBotInference(_frame);
+		runBotInference(deltaTime, _frame);
 	}
 
 	if (ImGui::Begin("Bot", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
@@ -131,7 +137,8 @@ void BotManagerWindow::Run(float deltaTime)
 							_model->LoadModel(true, _modelPath);
 
 							// And run warm-up inference
-							runBotInference(_frame);
+							_boxStates.clear();
+							runBotInference(deltaTime, _frame);
 						}
 						ImGui::EndDisabled();
 						if (_modelPath == nullptr && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -199,16 +206,102 @@ void BotManagerWindow::Run(float deltaTime)
 	}
 }
 
-void BotManagerWindow::runBotInference(cv::Mat& frame)
+void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 {
 	// Run YOLO inference
 	_model->Inference(frame, _detections);
 
+	// Filter out the detections that overlap
+	size_t detectionCount = _detections.size();
+	for (int i = 0; i < detectionCount; ++i)
+	{
+		YoloDetectionBox& curBox = _detections[i];
+		for (int j = i + 1; j < _detections.size(); j++)
+		{
+			YoloDetectionBox& otherBox = _detections[j];
+			if (curBox.Overlaps(otherBox))
+			{
+				// Skip if class missmatch
+				if (curBox.classId != otherBox.classId) continue;
+
+				// Merge the two detections in current
+				curBox = curBox.Merge(otherBox);
+
+				// Swap with last and pop
+				_detections[j] = _detections.back();
+				_detections.pop_back();
+
+				// Prevent j increment to check the new box
+				--j;
+			}
+		}
+	}
+
+	// Before we update the box states, we need to increment the last seen
+	// time for each box state, and remove the ones that have not been seen
+	for (int i = _boxStates.size() - 1; i >= 0; --i)
+	{
+		auto& boxState = _boxStates[i];
+		boxState.lastSeen += deltaTime;
+		if (boxState.lastSeen > 10.0f) // TODO: Make this a configurable value
+		{
+			// Reset clicked pointer
+			if (_curTargetBoxState == &boxState)
+			{
+				_curTargetBoxState = nullptr;
+			}
+			_boxStates.erase(_boxStates.begin() + i);
+		}
+	}
+
+	// We keep track of the mapping between detections and box states so we can make the bot operate on
+	// detections (most valid screen data) while also being able to peel off the states for processing
+	// Info.: All detections have a box state, but not all box states have a valid detection
+	_boxStatesMapping.resize(_detections.size());
+
+	// Try to map current detections to persisted box states
+	// If a detection is not found, add it to the box states
+	for (int i = 0; i < _detections.size(); ++i)
+	{
+		bool found = false;
+		const auto& detection = _detections[i];
+		for (auto& boxState : _boxStates)
+		{
+			if (boxState.box.IsSimilar(detection))
+			{
+				// Doing this so bot knows object has changed
+				// TODO: This is something a task should handle
+				if (boxState.box.classId != detection.classId)
+				{
+					// Reset clicked pointer
+					if (_curTargetBoxState == &boxState)
+					{
+						_curTargetBoxState = nullptr;
+					}
+				}
+
+				boxState.box = detection;
+				boxState.lastSeen = 0.0f;
+				found = true;
+
+				_boxStatesMapping[i] = &boxState;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			_boxStates.push_back({ detection, 0.0f });
+			_boxStatesMapping[i] = &_boxStates.back();
+		}
+	}
+
 	// TODO: Draw using ImGui or OpenGL (for performance),
 	// and move this to a proper wrapper class per model
 	// Draw rectangles on the image frame
-	for (const auto& detection : _detections)
+	for (int i = 0; i < _detections.size(); ++i)
 	{
+		const auto& detection = _detections[i];
 		cv::Rect rect(detection.x, detection.y, detection.w, detection.h);
 
 		std::string label;
@@ -222,12 +315,12 @@ void BotManagerWindow::runBotInference(cv::Mat& frame)
 		if (detection.classId == 6) { color = cv::Scalar(193, 205, 205);	label = "Tin";		};
 		if (detection.classId == 7) { color = cv::Scalar(0, 0, 0);			label = "Wasted";	};
 		cv::rectangle(frame, rect, color, 2);
-		cv::putText(frame, label, rect.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+		label += " (\t" + std::to_string(i) + ")";
+		cv::putText(frame, label, rect.tl() - cv::Point{0, 15}, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1.0, color, 2);
 	}
 
 	// Update mouse movement database
-	MouseMovementDatabase& mouseMovementDatabase = MouseMovementDatabase::GetInstance();
-	mouseMovementDatabase.UpdateDatabase();
+	_mouseMovementDatabase.UpdateDatabase();
 
 	// TEST: Fetch closes copper ore to center of screen (player) and
 	// query a mouse movement from current mouse position to that point
@@ -235,6 +328,7 @@ void BotManagerWindow::runBotInference(cv::Mat& frame)
 	cv::Point closestCopperPos;
 	float closestCopperRadius = 0.0f;
 	float closestCopperDistance = FLT_MAX;
+	const YoloDetectionBox* closestCopperDetection = nullptr;
 	for (const auto& detection : _detections)
 	{
 		if (detection.classId != 2) continue; // Copper
@@ -248,27 +342,70 @@ void BotManagerWindow::runBotInference(cv::Mat& frame)
 			closestCopperDistance = distance;
 			closestCopperPos = copperPos;
 			closestCopperRadius = std::min(halfWidth, halfHeight);
+			closestCopperDetection = &detection;
 		}
 	}
 
 	// If no copper ore was found, return
-	if (closestCopperRadius == 0.0f) return;
+	if (closestCopperDetection == nullptr) return;
 
 	// Fetch mouse position for query
 	cv::Point mousePos;
-	InputManager& mouseTracker = InputManager::GetInstance();
-	mouseTracker.GetMousePosition(mousePos);
+	_inputManager.GetMousePosition(mousePos);
 
 	// Convert target pos from image frame coordinates to system coordinates
-	WindowCaptureService& screenCaptureService = WindowCaptureService::GetInstance();
-	closestCopperPos = screenCaptureService.FrameToSystemCoordinates(closestCopperPos, frame);
+	closestCopperPos = _captureService.FrameToSystemCoordinates(closestCopperPos, frame);
 
 	// Query mouse movement from current mouse
 	MouseMovement bestMovement;
-	mouseMovementDatabase.QueryMovement(mousePos, closestCopperPos, closestCopperRadius, bestMovement);
+	_mouseMovementDatabase.QueryMovement(mousePos, closestCopperPos, closestCopperRadius, bestMovement);
 
 	if (bestMovement.IsValid())
 	{
 		drawMouseMovement(bestMovement, frame);
+	}
+
+	// If we don't we are moving to the next ore (current movement)
+	if (_curMouseMovement.IsValid())
+	{
+		// Play the movement
+		MousePoint point = _curMouseMovement.points[0];
+		point.deltaTime -= deltaTime;
+		if (point.deltaTime <= 0.0f) // Consume point
+		{
+			_curMouseMovement.points.erase(_curMouseMovement.points.begin());
+			if (_curMouseMovement.points.empty()) // Last point consumed (click)
+			{
+				if (_curClickState == MOUSE_CLICK_NONE) _curClickState = MOUSE_CLICK_DOWN;
+				else _curClickState = (MouseClickState)(1 - _curClickState); // Flip state
+				_inputManager.SetMousePosition(point.point, MOUSE_BUTTON_LEFT, _curClickState);
+
+				// If we just clicked down, fetch a click-up and set it as the next movement
+				if (_curClickState == MOUSE_CLICK_DOWN)
+				{
+					_mouseMovementDatabase.QueryMovement(point.point, point.point, 200.0f, _curMouseMovement);
+				}
+			}
+			else // Not final point yet, just move the mouse
+			{
+				_inputManager.SetMousePosition(point.point);
+			}
+		}
+	}
+	else // We are waiting for the ore to be mined or we are idle
+	{
+		// If we have a target box, we are waiting for the ore to be mined
+		if (_curTargetBoxState != nullptr)
+		{
+			// TODO: Do something here
+		}
+		else // We are idle
+		{
+			// If we have a valid movement, we can start moving to the next ore
+			if (bestMovement.IsValid())
+			{
+				_curMouseMovement = std::move(bestMovement);
+			}
+		}
 	}
 }

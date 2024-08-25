@@ -22,13 +22,12 @@ class TrainingLabWindow : public IBotWindow
 	// Helper references
 	class WindowCaptureService& _captureService;
 	class MouseMovementDatabase& _mouseMovementDatabase;
-	class InputManager& _mouseTracker;
+	class InputManager& _inputManager;
 
 	// Internal state
 	cv::Mat _frame;
 	uint32_t _frameTexId;
 
-	float _internalTimer = 0.0f;
 	float _samePosThreshold = 2.0f;
 	cv::Point _mousePos;
 	cv::Point _mouseDown;
@@ -40,4 +39,5 @@ class TrainingLabWindow : public IBotWindow
 	MouseMovement* _curMouseMovement = nullptr;
 	MouseMovement* _selMouseMovement = nullptr;
 	std::vector<MouseMovement> _playbackMouseMovements;
+	MouseClickState _playbackClickState = MOUSE_CLICK_NONE;
 };

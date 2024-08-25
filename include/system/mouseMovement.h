@@ -12,16 +12,18 @@
 
 enum MouseButton
 {
-	LEFT_BUTTON,
-	RIGHT_BUTTON,
-	MIDDLE_BUTTON,
+	MOUSE_BUTTON_LEFT	= 0,
+	MOUSE_BUTTON_RIGHT	= 1,
+	MOUSE_BUTTON_MIDDLE = 2,
+	MOUSE_BUTTON_COUNT	= 3
 };
 
 enum MouseClickState
 {
-	MOUSE_MOVE,
-	MOUSE_DOWN,
-	MOUSE_UP
+	MOUSE_CLICK_NONE	= -1,
+	MOUSE_CLICK_DOWN	= 0,
+	MOUSE_CLICK_UP		= 1,
+	MOUSE_CLICK_COUNT	= 3
 };
 
 struct MousePoint
@@ -61,11 +63,9 @@ struct MouseMovement
 		return atan2(diff.y, diff.x);
 	}
 
-	bool IsValid() const { return points.size() > 1; }
+	bool IsValid() const { return !points.empty(); }
 
 	std::vector<MousePoint> points;
 	cv::Point minPoint, maxPoint;
 	cv::Scalar color;
-	MouseClickState clickState = MOUSE_DOWN;
-	MouseButton button = LEFT_BUTTON;
 };

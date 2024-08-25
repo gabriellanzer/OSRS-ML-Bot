@@ -28,41 +28,58 @@ void InputManager::GetMousePosition(cv::Point& pos)
 	pos.y = _mousePosition.y;
 }
 
-bool InputManager::GetMouseDownPosition(cv::Point& pos)
+bool InputManager::GetMouseDownPosition(cv::Point& pos, MouseButton button)
 {
-	pos.x = _mouseDownPosition.x;
-	pos.y = _mouseDownPosition.y;
-	if (_mouseDown)
+	pos.x = _mouseDownPosition[button].x;
+	pos.y = _mouseDownPosition[button].y;
+	if (_mouseDown[button])
 	{
-		_mouseDown = false;
+		_mouseDown[button] = false;
 		return true;
 	}
 	return false;
 }
 
-bool InputManager::GetMouseUpPosition(cv::Point& pos)
+bool InputManager::GetMouseUpPosition(cv::Point& pos, MouseButton button)
 {
-	pos.x = _mouseUpPosition.x;
-	pos.y = _mouseUpPosition.y;
-	if (_mouseUp)
+	pos.x = _mouseUpPosition[button].x;
+	pos.y = _mouseUpPosition[button].y;
+	if (_mouseUp[button])
 	{
-		_mouseUp = false;
+		_mouseUp[button] = false;
 		return true;
 	}
 	return false;
 }
 
-void InputManager::SetMousePosition(cv::Point pos, MouseClickState state)
+void InputManager::SetMousePosition(cv::Point pos, MouseButton button, MouseClickState state)
 {
 	SetCursorPos(pos.x, pos.y);
 
-	if (state != MOUSE_MOVE)
+	if (state != MOUSE_CLICK_NONE)
 	{
 		INPUT input = {};
 		input.type = INPUT_MOUSE;
 		input.mi.dx = pos.x;
 		input.mi.dy = pos.y;
-		input.mi.dwFlags = state == MOUSE_DOWN ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+
+		if (button == MOUSE_BUTTON_LEFT)
+		{
+			input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+		}
+		else if (button == MOUSE_BUTTON_RIGHT)
+		{
+			input.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+		}
+		else if (button == MOUSE_BUTTON_MIDDLE)
+		{
+			input.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
+		}
+		if (state == MOUSE_CLICK_UP)
+		{
+			// Up flags are double the value of down flags
+			input.mi.dwFlags *= 2;
+		}
 		SendInput(1, &input, sizeof(INPUT));
 	}
 }
@@ -83,21 +100,63 @@ void InputManager::trackMouse()
 		// Check if the left mouse button is down
 		if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
 		{
-			if (!_internalMouseDown)
+			if (!_internalMouseDown[MOUSE_BUTTON_LEFT])
 			{
-				_internalMouseDown = true;
-				_mouseDown = true;
-				_mouseDownPosition = currentPos;
+				_internalMouseDown[MOUSE_BUTTON_LEFT] = true;
+				_mouseDown[MOUSE_BUTTON_LEFT] = true;
+				_mouseDownPosition[MOUSE_BUTTON_LEFT] = currentPos;
 			}
 		}
 		else // The left mouse button is not down
 		{
 			// Check if just released
-			if (_internalMouseDown)
+			if (_internalMouseDown[MOUSE_BUTTON_LEFT])
 			{
-				_internalMouseDown = false;
-				_mouseUp = true;
-				_mouseUpPosition = currentPos;
+				_internalMouseDown[MOUSE_BUTTON_LEFT] = false;
+				_mouseUp[MOUSE_BUTTON_LEFT] = true;
+				_mouseUpPosition[MOUSE_BUTTON_LEFT] = currentPos;
+			}
+		}
+
+		// Check if the right mouse button is down
+		if (GetAsyncKeyState(VK_RBUTTON) & 0x8000)
+		{
+			if (!_internalMouseDown[MOUSE_BUTTON_RIGHT])
+			{
+				_internalMouseDown[MOUSE_BUTTON_RIGHT] = true;
+				_mouseDown[MOUSE_BUTTON_RIGHT] = true;
+				_mouseDownPosition[MOUSE_BUTTON_RIGHT] = currentPos;
+			}
+		}
+		else // The right mouse button is not down
+		{
+			// Check if just released
+			if (_internalMouseDown[MOUSE_BUTTON_RIGHT])
+			{
+				_internalMouseDown[MOUSE_BUTTON_RIGHT] = false;
+				_mouseUp[MOUSE_BUTTON_RIGHT] = true;
+				_mouseUpPosition[MOUSE_BUTTON_RIGHT] = currentPos;
+			}
+		}
+
+		// Check if the middle mouse button is down
+		if (GetAsyncKeyState(VK_MBUTTON) & 0x8000)
+		{
+			if (!_internalMouseDown[MOUSE_BUTTON_MIDDLE])
+			{
+				_internalMouseDown[MOUSE_BUTTON_MIDDLE] = true;
+				_mouseDown[MOUSE_BUTTON_MIDDLE] = true;
+				_mouseDownPosition[MOUSE_BUTTON_MIDDLE] = currentPos;
+			}
+		}
+		else // The middle mouse button is not down
+		{
+			// Check if just released
+			if (_internalMouseDown[MOUSE_BUTTON_MIDDLE])
+			{
+				_internalMouseDown[MOUSE_BUTTON_MIDDLE] = false;
+				_mouseUp[MOUSE_BUTTON_MIDDLE] = true;
+				_mouseUpPosition[MOUSE_BUTTON_MIDDLE] = currentPos;
 			}
 		}
 
