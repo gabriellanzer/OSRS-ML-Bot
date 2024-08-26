@@ -25,13 +25,15 @@ public:
 
 	void SetPoolingRate(uint32_t rate) { _poolingRate = rate; }
 
-	void GetMousePosition(cv::Point& pos);
+	void GetMousePosition(cv::Point& pos) const;
 	bool GetMouseDownPosition(cv::Point& pos, MouseButton button);
 	bool GetMouseUpPosition(cv::Point& pos, MouseButton button);
 
 	void SetMousePosition(cv::Point pos, MouseButton button = MOUSE_BUTTON_LEFT, MouseClickState state = MOUSE_CLICK_NONE);
 
-	bool IsEscapePressed();
+	bool IsEscapePressed() const;
+	bool IsTabPressed() const;
+	bool IsCapsLockOn() const;
 
 private:
 	InputManager();

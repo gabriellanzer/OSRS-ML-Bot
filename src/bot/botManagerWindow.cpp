@@ -46,10 +46,14 @@ void BotManagerWindow::Run(float deltaTime)
 	// Fetch a new copy of the image
 	_frame = _captureService.GetLatestFrame();
 
-	if (_inputManager.IsEscapePressed())
+	if (!_inputManager.IsCapsLockOn())
 	{
 		_isBotRunning = false;
 		_curTargetBoxState = nullptr;
+	}
+	else if (_model != nullptr)
+	{
+		_isBotRunning = true;
 	}
 
 	if (_isBotRunning)
@@ -96,6 +100,23 @@ void BotManagerWindow::Run(float deltaTime)
 						ImGui::Text("X: %d, Y: %d", curPoint.pos.x, curPoint.pos.y);
 						ImGui::Text("Delta Time: %.2f", curPoint.deltaTime);
 					}
+				}
+				if (_curTargetBoxState != nullptr)
+				{
+					ImGui::Text("Current Target:");
+					int targetBoxIndex = 0;
+					for (auto& state : _detectionsStates)
+					{
+						if (&state == _curTargetBoxState)
+						{
+							break;
+						}
+						targetBoxIndex++;
+					}
+					ImGui::Text("Index: %d", targetBoxIndex);
+					ImGui::Text("Class: %d", _curTargetBoxState->box.classId);
+					ImGui::Text("X: %f, Y: %f", _curTargetBoxState->box.x, _curTargetBoxState->box.y);
+					ImGui::Text("W: %f, H: %f", _curTargetBoxState->box.w, _curTargetBoxState->box.h);
 				}
 
 				ImGui::Separator();
@@ -160,7 +181,7 @@ void BotManagerWindow::Run(float deltaTime)
 							_model->LoadModel(true, _modelPath);
 
 							// And run warm-up inference
-							_boxStates.clear();
+							_detectionsStates.clear();
 							runBotInference(deltaTime, _frame);
 						}
 						ImGui::EndDisabled();
@@ -244,7 +265,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 			YoloDetectionBox& otherBox = _detections[j];
 			if (curBox.IsSimilar(otherBox))
 			{
-				// Skip if class missmatch
+				// Skip if class is different
 				if (curBox.classId != otherBox.classId) continue;
 
 				// Merge the two detections in current
@@ -262,25 +283,24 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 
 	// Before we update the box states, we need to increment the last seen
 	// time for each box state, and remove the ones that have not been seen
-	for (int i = _boxStates.size() - 1; i >= 0; --i)
+	for (auto it = _detectionsStates.begin(); it != _detectionsStates.end();)
 	{
-		auto& boxState = _boxStates[i];
+		DetectionBoxState& boxState = *it;
 		boxState.lastSeen += deltaTime;
 		if (boxState.lastSeen > 10.0f) // TODO: Make this a configurable value
 		{
-			// Reset clicked pointer
+			// Reset clicked pointer if removed
 			if (_curTargetBoxState == &boxState)
 			{
 				_curTargetBoxState = nullptr;
 			}
-			_boxStates.erase(_boxStates.begin() + i);
+			it = _detectionsStates.erase(it);
+		}
+		else
+		{
+			++it;
 		}
 	}
-
-	// We keep track of the mapping between detections and box states so we can make the bot operate on
-	// detections (most valid screen data) while also being able to peel off the states for processing
-	// Info.: All detections have a box state, but not all box states have a valid detection
-	_boxStatesMapping.resize(_detections.size());
 
 	// Try to map current detections to persisted box states
 	// If a detection is not found, add it to the box states
@@ -288,7 +308,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 	{
 		bool found = false;
 		const auto& detection = _detections[i];
-		for (auto& boxState : _boxStates)
+		for (auto& boxState : _detectionsStates)
 		{
 			if (boxState.box.IsSimilar(detection))
 			{
@@ -306,25 +326,23 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 				boxState.box = detection;
 				boxState.lastSeen = 0.0f;
 				found = true;
-
-				_boxStatesMapping[i] = &boxState;
 				break;
 			}
 		}
 
 		if (!found)
 		{
-			_boxStates.push_back({ detection, 0.0f });
-			_boxStatesMapping[i] = &_boxStates.back();
+			_detectionsStates.push_back({ detection, 0.0f });
 		}
 	}
 
 	// TODO: Draw using ImGui or OpenGL (for performance),
 	// and move this to a proper wrapper class per model
 	// Draw rectangles on the image frame
-	for (int i = 0; i < _boxStates.size(); ++i)
+	int i = 0;
+	for (auto& state : _detectionsStates)
 	{
-		const auto& detection = _boxStates[i].box;
+		const auto& detection = state.box;
 		cv::Rect rect(detection.x, detection.y, detection.w, detection.h);
 
 		std::string label;
@@ -338,7 +356,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 		if (detection.classId == 6) { color = cv::Scalar(193, 205, 205);	label = "Tin";		};
 		if (detection.classId == 7) { color = cv::Scalar(0, 0, 0);			label = "Wasted";	};
 		cv::rectangle(frame, rect, color, 2);
-		label += " (" + std::to_string(i) + ")";
+		label += " (" + std::to_string(i++) + ":" + std::to_string(state.lastSeen) + "s)";
 		cv::putText(frame, label, rect.tl() - cv::Point{0, 15}, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1.0, color, 2);
 	}
 
@@ -351,9 +369,13 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 	cv::Point closestCopperPos;
 	float closestCopperRadius = 0.0f;
 	float closestCopperDistance = FLT_MAX;
-	const YoloDetectionBox* closestCopperDetection = nullptr;
-	for (const auto& detection : _detections)
+	DetectionBoxState* closestCopperBox = nullptr;
+	for (auto& state : _detectionsStates)
 	{
+		// Only if state is currently visible
+		if (state.lastSeen > 0.0f) continue;
+
+		const auto& detection = state.box;
 		if (detection.classId != 2) continue; // Copper
 
 		const float halfWidth = detection.w / 2;
@@ -365,81 +387,107 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 			closestCopperDistance = distance;
 			closestCopperPos = copperPos;
 			closestCopperRadius = std::min(halfWidth, halfHeight);
-			closestCopperDetection = &detection;
+			closestCopperBox = &state;
 		}
 	}
 
 	// If no copper ore was found (and no current target box active), return
-	if (closestCopperDetection == nullptr && _curTargetBoxState == nullptr)
+	if (closestCopperBox == nullptr && _curTargetBoxState == nullptr)
 	{
 		return;
 	}
 
-	// Fetch mouse position for query
+	// These will be used throughout the function
 	cv::Point mousePos;
-	_inputManager.GetMousePosition(mousePos);
-
-	// Convert target pos from image frame coordinates to system coordinates
-	closestCopperPos = _captureService.FrameToSystemCoordinates(closestCopperPos, frame);
-
-	// Query mouse movement from current mouse
-	MouseMovement bestMovement;
-	_mouseMovementDatabase.QueryMovement(mousePos, closestCopperPos, closestCopperRadius, bestMovement);
-
-	if (bestMovement.IsValid())
 	{
-		drawMouseMovement(bestMovement, frame);
+		_inputManager.GetMousePosition(mousePos);
+		closestCopperPos = _captureService.FrameToSystemCoordinates(closestCopperPos, frame);
 	}
 
-	// If we don't we are moving to the next ore (current movement)
-	if (_curMouseMovement.IsValid())
+	// We are seeking a new target box and we found one
+	if (_curTargetBoxState == nullptr && closestCopperBox != nullptr)
 	{
-		// Play the movement
-		MousePoint& point = _curMouseMovement.points[0];
-		point.deltaTime -= deltaTime;
-		if (point.deltaTime <= 0.0f) // Consume point
-		{
-			cv::Point mousePos = point.pos;
-			_curMouseMovement.points.erase(_curMouseMovement.points.begin());
-			if (_curMouseMovement.points.empty()) // Last point consumed (click)
-			{
-				if (_curClickState == MOUSE_CLICK_NONE) _curClickState = MOUSE_CLICK_DOWN;
-				else _curClickState = (MouseClickState)(1 - _curClickState); // Flip state
-				_inputManager.SetMousePosition(mousePos, MOUSE_BUTTON_LEFT, _curClickState);
+		// Query mouse movement from current mouse
+		MouseMovement bestMovement;
+		_mouseMovementDatabase.QueryMovement(mousePos, closestCopperPos, closestCopperRadius * 0.85f, bestMovement, 0.0f, 1.5f);
 
-				// If we just clicked down, fetch a click-up and set it as the next movement
-				if (_curClickState == MOUSE_CLICK_DOWN)
-				{
-					// Where we release the click doesn't really matter for mining (could for other tasks)
-					_mouseMovementDatabase.QueryMovement(mousePos, mousePos, 200.0f, _curMouseMovement);
-				}
-				else // Click up (mouse move + click finished)
-				{
-					// Assign current target box state as the one we just started mining
-					int detectionIndex = closestCopperDetection - _detections.data();
-					_curTargetBoxState = _boxStatesMapping[detectionIndex];
-				}
-			}
-			else // Not final point yet, just move the mouse
-			{
-				_inputManager.SetMousePosition(mousePos);
-			}
+		// If we have a movement, we can pick this box as the target and start moving
+		if (bestMovement.IsValid())
+		{
+			_curTargetBoxState = closestCopperBox;
+			_curMouseMovement = std::move(bestMovement);
 		}
 	}
-	else // We are waiting for the ore to be mined or we are idle
+
+	// If we have a target box we are either waiting
+	// for the ore to be mined or we are moving to it
+	if (_curTargetBoxState != nullptr)
 	{
-		// If we have a target box, we are waiting for the ore to be mined
-		if (_curTargetBoxState != nullptr)
+		// We have a valid movement, consume it
+		if (_curMouseMovement.IsValid())
 		{
-			// TODO: Do something here (like check if the ore is mined?)
-			bool test = true;
-		}
-		else // We are idle
-		{
-			// If we have a valid movement, we can start moving to the next ore
-			if (bestMovement.IsValid())
+			drawMouseMovement(_curMouseMovement, frame);
+
+			// Play the movement
+			MousePoint& point = _curMouseMovement.points[0];
+			point.deltaTime -= deltaTime;
+			if (point.deltaTime <= 0.0f) // Consume point
 			{
-				_curMouseMovement = std::move(bestMovement);
+				cv::Point mousePos = point.pos;
+				_curMouseMovement.points.erase(_curMouseMovement.points.begin());
+				if (_curMouseMovement.points.empty()) // Last point consumed (click)
+				{
+					if (_curClickState == MOUSE_CLICK_NONE) _curClickState = MOUSE_CLICK_DOWN;
+					else _curClickState = (MouseClickState)(1 - _curClickState); // Flip state
+					_inputManager.SetMousePosition(mousePos, MOUSE_BUTTON_LEFT, _curClickState);
+
+					// If we just clicked down, fetch a click-up and set it as the next movement
+					if (_curClickState == MOUSE_CLICK_DOWN)
+					{
+						// Where we release the click doesn't really matter for mining (could for other tasks)
+						_mouseMovementDatabase.QueryMovement(mousePos, mousePos, 200.0f, _curMouseMovement, 0.0f, 0.5f);
+					}
+				}
+				else // Not final point yet, just move the mouse
+				{
+					_inputManager.SetMousePosition(mousePos);
+				}
+			}
+		}
+		else // We are waiting for the ore to be mined
+		{
+			if (_curTargetBoxState->box.classId != 2) // Not copper anymore
+			{
+				// It was mined
+				_curTargetBoxState = nullptr;
+			}
+			else if (_curTargetBoxState->box.classId == 2)
+			{
+				// We are still mining it
+			}
+			else if (_nextMouseMovement.IsValid())
+			{
+				drawMouseMovement(_nextMouseMovement, frame);
+
+				// Play the movement
+				MousePoint& point = _nextMouseMovement.points[0];
+				point.deltaTime -= deltaTime;
+				if (point.deltaTime <= 0.0f) // Consume point
+				{
+					_nextMouseMovement.points.erase(_nextMouseMovement.points.begin());
+					_inputManager.SetMousePosition(point.pos);
+				}
+			}
+			else // We are idle
+			{
+				// So if there is a new target, we can start moving towards it
+				if (closestCopperBox != nullptr && closestCopperBox != _curTargetBoxState)
+				{
+					// TODO: Implement this
+				}
+
+				// For now just pick a *lengthy* random movement close to the current position
+				_mouseMovementDatabase.QueryMovement(mousePos, mousePos, 400.0f, _nextMouseMovement, 1.5f, 20.0f);
 			}
 		}
 	}

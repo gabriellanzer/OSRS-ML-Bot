@@ -101,7 +101,7 @@ void MouseMovementDatabase::UpdateDatabase()
 	}
 }
 
-void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, MouseMovement& outMovement)
+void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, MouseMovement& outMovement, float minTime, float maxTime)
 {
 	// Compute query parameters
 	cv::Point diff = endPos - iniPos;
@@ -115,9 +115,21 @@ void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, fl
 		_queryCandidatesIds[i] = i;
 	}
 
-	// Sort indices by target point distance
+	// Sort indices by target point distance, min and max time
 	std::sort(_queryCandidatesIds.begin(), _queryCandidatesIds.end(), [&](const int a, const int b)
 	{
+		float totalTimeA = _relativeMouseMovements[a].GetTotalTime();
+		float totalTimeB = _relativeMouseMovements[b].GetTotalTime();
+
+		// Sort by min and max time
+		if (totalTimeA < minTime && totalTimeB >= minTime) return true;
+		if (totalTimeA >= minTime && totalTimeB < minTime) return false;
+		if (totalTimeA > maxTime && totalTimeB <= maxTime) return false;
+		if (totalTimeA <= maxTime && totalTimeB > maxTime) return true;
+		if (totalTimeA < minTime && totalTimeB < minTime) return totalTimeA > totalTimeB;
+		if (totalTimeA > maxTime && totalTimeB > maxTime) return totalTimeA < totalTimeB;
+
+		// If both match time contraints, sort by distance
 		cv::Point targetDiffA = _relativeMouseTargetPoints[a] - diff;
 		cv::Point targetDiffB = _relativeMouseTargetPoints[b] - diff;
 		float sqrdDistA = targetDiffA.dot(targetDiffA);
@@ -127,12 +139,20 @@ void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, fl
 
 	// Count number of matches
 	int numMatches = 0;
+	int numRelaxedMatches = 0;
 	for (int candidateId : _queryCandidatesIds)
 	{
+		float totalTime = _relativeMouseMovements[candidateId].GetTotalTime();
 		float diffDist = cv::norm(_relativeMouseTargetPoints[candidateId] - diff);
-		if (diffDist < threshold)
+		bool matchTime = totalTime >= minTime && totalTime <= maxTime;
+		if (diffDist < threshold && matchTime)
 		{
 			++numMatches;
+			++numRelaxedMatches;
+		}
+		else if (diffDist < threshold && !matchTime)
+		{
+			++numRelaxedMatches;
 		}
 		else
 		{
@@ -143,14 +163,14 @@ void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, fl
 
 	// If there are no candidates, return an empty movement for now
 	// Later, we can reshape existing movements to match the query
-	if (numMatches == 0)
+	if (numRelaxedMatches == 0)
 	{
 		outMovement = MouseMovement();
 		return;
 	}
 
-	// Resize down to remove non-matching candidates
-	_queryCandidatesIds.resize(numMatches);
+	// Resize down to remove non-matching candidates (unless there are only soft-matches)
+	_queryCandidatesIds.resize(numMatches ? numMatches : numRelaxedMatches);
 
 	// Sort by angle
 	std::sort(_queryCandidatesIds.begin(), _queryCandidatesIds.end(), [&](const int a, const int b)
@@ -200,78 +220,4 @@ void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, fl
 		const float halfHarmonicWeight = 0.5f / static_cast<float>(i + 1);
 		_relativeMouseRandomWeights[_queryCandidatesIds[i]] += halfHarmonicWeight;
 	}
-}
-
-std::vector<MouseMovement> MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold)
-{
-	// Compute query parameters
-	cv::Point diff = endPos - iniPos;
-	float angle = atan2(diff.y, diff.x);
-	float distance = cv::norm(diff);
-
-	// Populate with default ids
-	_queryCandidatesIds.resize(_relativeMouseMovements.size());
-	for (size_t i = 0; i < _relativeMouseMovements.size(); i++)
-	{
-		_queryCandidatesIds[i] = i;
-	}
-
-	// Sort indices by target point distance
-	std::sort(_queryCandidatesIds.begin(), _queryCandidatesIds.end(), [&](const int a, const int b)
-	{
-		cv::Point targetDiffA = _relativeMouseTargetPoints[a] - diff;
-		cv::Point targetDiffB = _relativeMouseTargetPoints[b] - diff;
-		float sqrdDistA = targetDiffA.dot(targetDiffA);
-		float sqrdDistB = targetDiffB.dot(targetDiffB);
-		return sqrdDistA < sqrdDistB;
-	});
-
-	// Count number of matches
-	int numMatches = 0;
-	for (int candidateId : _queryCandidatesIds)
-	{
-		float diffDist = cv::norm(_relativeMouseTargetPoints[candidateId] - diff);
-		if (diffDist < threshold)
-		{
-			++numMatches;
-		}
-		else
-		{
-			// Early exit because array is sorted
-			break;
-		}
-	}
-
-	// If there are no candidates, return an empty movement for now
-	// Later, we can reshape existing movements to match the query
-	if (numMatches == 0)
-	{
-		return {};
-	}
-
-	// Resize down to remove non-matching candidates
-	_queryCandidatesIds.resize(numMatches);
-
-	// Sort by angle
-	std::sort(_queryCandidatesIds.begin(), _queryCandidatesIds.end(), [&](const int a, const int b)
-	{
-		return std::abs(_relativeMouseMovements[a].GetAngle() - angle) < std::abs(_relativeMouseMovements[b].GetAngle() - angle);
-	});
-
-	std::vector<MouseMovement> outMovements;
-	outMovements.resize(numMatches);
-	for (int i = 0; i < numMatches; i++)
-	{
-		MouseMovement movement = _relativeMouseMovements[_queryCandidatesIds[i]];
-
-		// Apply the relative position position to the initial position
-		for (auto& point : movement.points)
-		{
-			point.pos += iniPos;
-		}
-
-		outMovements[i] = movement;
-	}
-
-	return outMovements;
 }

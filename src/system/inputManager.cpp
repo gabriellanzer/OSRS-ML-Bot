@@ -22,7 +22,7 @@ void InputManager::Shutdown()
 	_mouseThread.join();
 }
 
-void InputManager::GetMousePosition(cv::Point& pos)
+void InputManager::GetMousePosition(cv::Point& pos) const
 {
 	pos.x = _mousePosition.x;
 	pos.y = _mousePosition.y;
@@ -84,9 +84,19 @@ void InputManager::SetMousePosition(cv::Point pos, MouseButton button, MouseClic
 	}
 }
 
-bool InputManager::IsEscapePressed()
+bool InputManager::IsEscapePressed() const
 {
 	return GetAsyncKeyState(VK_ESCAPE) & 0x8000;
+}
+
+bool InputManager::IsTabPressed() const
+{
+	return GetAsyncKeyState(VK_TAB) & 0x8000;
+}
+
+bool InputManager::IsCapsLockOn() const
+{
+	return GetKeyState(VK_CAPITAL) & 1;
 }
 
 void InputManager::trackMouse()

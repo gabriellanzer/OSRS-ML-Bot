@@ -63,6 +63,16 @@ struct MouseMovement
 		return atan2(diff.y, diff.x);
 	}
 
+	float GetTotalTime()
+	{
+		float totalTime = 0.0f;
+		for (const auto& point : points)
+		{
+			totalTime += point.deltaTime;
+		}
+		return totalTime;
+	}
+
 	bool IsValid() const { return !points.empty(); }
 
 	std::vector<MousePoint> points;

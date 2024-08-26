@@ -42,11 +42,11 @@ private:
 
 	bool _isBotRunning = false;
 	std::vector<YoloDetectionBox> _detections;
-	std::vector<DetectionBoxState*> _boxStatesMapping;
-	std::vector<DetectionBoxState> _boxStates;
+	std::list<DetectionBoxState> _detectionsStates;
 
 	// TODO: move this to a task
 	MouseMovement _curMouseMovement;
+	MouseMovement _nextMouseMovement;
 	MouseClickState _curClickState = MOUSE_CLICK_NONE;
 	DetectionBoxState* _curTargetBoxState = nullptr;
 };
