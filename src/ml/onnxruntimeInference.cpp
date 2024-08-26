@@ -65,7 +65,7 @@ int YOLOInterfaceBase::Inference(cv::Mat& image, std::vector<Ort::Value>& output
 		std::cout << "ONNX exception caught: " << oe.what() << ". Code: " << oe.GetOrtErrorCode() << ".\n";
 		return -1;
 	}
-	auto info = outputTensor.front().GetTensorTypeAndShapeInfo();
+	auto info = outputTensor[0].GetTensorTypeAndShapeInfo();
 	return info.GetElementCount();
 }
 
@@ -77,8 +77,8 @@ void YOLOv8::Inference(cv::Mat& image, std::vector<YoloDetectionBox>& detectionB
 	_outputScaling = { (float)image.cols / _inputNodeDims[2], (float)image.rows / _inputNodeDims[3] };
 
 	// Get the output tensor
-	std::vector<int64_t> outputTensorShape = _outputTensor.front().GetTensorTypeAndShapeInfo().GetShape();
-	float* outputData = _outputTensor.front().GetTensorMutableData<float>();
+	std::vector<int64_t> outputTensorShape = _outputTensor[0].GetTensorTypeAndShapeInfo().GetShape();
+	float* outputData = _outputTensor[0].GetTensorMutableData<float>();
 
 	// Transpose: [bs, features, preds_num] => [bs, preds_num, features]
 	cv::Mat outputMat = cv::Mat(cv::Size((int)outputTensorShape[2], (int)outputTensorShape[1]), CV_32F, outputData).t();

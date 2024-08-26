@@ -26,8 +26,8 @@ void MouseMovementDatabase::SaveMovements()
 		for (const auto& point : movement.points)
 		{
 			nlohmann::json jPoint;
-			jPoint["x"] = point.point.x;
-			jPoint["y"] = point.point.y;
+			jPoint["x"] = point.pos.x;
+			jPoint["y"] = point.pos.y;
 			jPoint["deltaTime"] = point.deltaTime;
 			jMovement["points"].push_back(jPoint);
 		}
@@ -69,9 +69,9 @@ void MouseMovementDatabase::UpdateDatabase()
 		MousePoint& firstPoint = movement.points[0];
 		for (size_t i = 1; i < movement.points.size(); i++)
 		{
-			movement.points[i].point -= firstPoint.point;
+			movement.points[i].pos -= firstPoint.pos;
 		}
-		firstPoint.point = cv::Point(0, 0);
+		firstPoint.pos = cv::Point(0, 0);
 	}
 
 	// Compute query parameters and sort by them
@@ -87,7 +87,7 @@ void MouseMovementDatabase::UpdateDatabase()
 		if (movement.points.empty()) continue;
 
 		// Compute angle
-		const cv::Point& lastPoint = movement.points.back().point;
+		const cv::Point& lastPoint = movement.points.back().pos;
 		_relativeMouseAngles[i] = atan2(lastPoint.y, lastPoint.x);
 
 		// Compute distance
@@ -185,7 +185,7 @@ void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, fl
 	// Apply the relative position position to the initial position
 	for (auto& point : outMovement.points)
 	{
-		point.point += iniPos;
+		point.pos += iniPos;
 	}
 
 	// Decrease the random weight by half the harmonic weight so it's
@@ -267,7 +267,7 @@ std::vector<MouseMovement> MouseMovementDatabase::QueryMovement(cv::Point iniPos
 		// Apply the relative position position to the initial position
 		for (auto& point : movement.points)
 		{
-			point.point += iniPos;
+			point.pos += iniPos;
 		}
 
 		outMovements[i] = movement;

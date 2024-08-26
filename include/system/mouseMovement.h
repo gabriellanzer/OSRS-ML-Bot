@@ -28,7 +28,7 @@ enum MouseClickState
 
 struct MousePoint
 {
-	cv::Point point;
+	cv::Point pos;
 	float deltaTime;
 };
 
@@ -53,13 +53,13 @@ struct MouseMovement
 	float IniEndDistance() const
 	{
 		if (points.size() < 2) return 0.0f;
-		return cv::norm(points.front().point - points.back().point);
+		return cv::norm(points[0].pos - points.back().pos);
 	}
 
 	float GetAngle() const
 	{
 		if (points.size() < 2) return 0.0f;
-		cv::Point diff = points.back().point - points.front().point;
+		cv::Point diff = points.back().pos - points[0].pos;
 		return atan2(diff.y, diff.x);
 	}
 

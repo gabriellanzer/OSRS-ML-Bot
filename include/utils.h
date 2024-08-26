@@ -191,8 +191,8 @@ inline void drawMouseMovement(const MouseMovement& movement, cv::Mat& frame, int
 	// Draw markers for first and last points
 	if (!movement.points.empty())
 	{
-		cv::Point p1 = movement.points[0].point;
-		cv::Point p2 = movement.points.back().point;
+		cv::Point p1 = movement.points[0].pos;
+		cv::Point p2 = movement.points.back().pos;
 		// Clamp to windows coordinates
 		p1 = captureService.SystemToFrameCoordinates(p1, frame);
 		p2 = captureService.SystemToFrameCoordinates(p2, frame);
@@ -201,8 +201,8 @@ inline void drawMouseMovement(const MouseMovement& movement, cv::Mat& frame, int
 	}
 	for (size_t i = 1; i < movement.points.size(); i++)
 	{
-		cv::Point p1 = movement.points[i - 1].point;
-		cv::Point p2 = movement.points[i].point;
+		cv::Point p1 = movement.points[i - 1].pos;
+		cv::Point p2 = movement.points[i].pos;
 		// Clamp to windows coordinates
 		p1 = captureService.SystemToFrameCoordinates(p1, frame);
 		p2 = captureService.SystemToFrameCoordinates(p2, frame);

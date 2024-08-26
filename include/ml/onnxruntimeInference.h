@@ -45,8 +45,9 @@ struct YoloDetectionBox
     float x, y, w, h;
     int classId;
 
-	bool IsSimilar(const YoloDetectionBox& other, float centerThreshold = 100.0f, float overlapRatioThreshold = 0.25f) const
+	bool IsSimilar(const YoloDetectionBox& other, float centerThreshold = 100.0f, float overlapRatioThreshold = 0.3f) const
 	{
+		// TODO: Re-evaluate this function
 		// // Check center distance first
 		// float cx1 = x + w / 2;
 		// float cy1 = y + h / 2;

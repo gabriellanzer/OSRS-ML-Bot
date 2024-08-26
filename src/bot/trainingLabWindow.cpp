@@ -109,7 +109,7 @@ void TrainingLabWindow::Run(float deltaTime)
 		{
 			lastPoint = &_curMouseMovement->points.back();
 		}
-		if (lastPoint != nullptr && lastPoint->point == _mousePos)
+		if (lastPoint != nullptr && lastPoint->pos == _mousePos)
 		{
 			lastPoint->deltaTime += deltaTime;
 			lastPoint->deltaTime = std::min(lastPoint->deltaTime, _samePosThreshold); // Cap the delta time to 1 second
@@ -149,14 +149,14 @@ void TrainingLabWindow::Run(float deltaTime)
 			{
 				if (_playbackClickState == MOUSE_CLICK_NONE) _playbackClickState = MOUSE_CLICK_DOWN;
 				else _playbackClickState = (MouseClickState)(1 - _playbackClickState); // Flip state
-				_inputManager.SetMousePosition(point.point, MOUSE_BUTTON_LEFT, _playbackClickState);
+				_inputManager.SetMousePosition(point.pos, MOUSE_BUTTON_LEFT, _playbackClickState);
 
 				_playbackMouseMovements.erase(_playbackMouseMovements.begin());
 				_curMouseMovement = nullptr;
 			}
 			else
 			{
-				_inputManager.SetMousePosition(point.point);
+				_inputManager.SetMousePosition(point.pos);
 			}
 		}
 	}
@@ -292,8 +292,8 @@ void TrainingLabWindow::Run(float deltaTime)
 					if (ImGui::IsItemHovered())
 					{
 						ImGui::BeginTooltip();
-						ImGui::Text("Initial Point: (%i, %i)", movement.points[0].point.x, movement.points[0].point.y);
-						ImGui::Text("End Point: (%i, %i)", movement.points.back().point.x, movement.points.back().point.y);
+						ImGui::Text("Initial Point: (%i, %i)", movement.points[0].pos.x, movement.points[0].pos.y);
+						ImGui::Text("End Point: (%i, %i)", movement.points.back().pos.x, movement.points.back().pos.y);
 						ImGui::TextUnformatted("Click to select, then 'Delete' to remove this movement.");
 						ImGui::EndTooltip();
 					}
