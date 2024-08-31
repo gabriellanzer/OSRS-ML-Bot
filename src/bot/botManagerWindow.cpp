@@ -1,16 +1,18 @@
 #include <bot/botManagerWindow.h>
 
 // Std dependencies
+#include <ctime>
 #include <string>
-#include <iostream>
+#include <fstream>
+#include <filesystem>
 
 // Third party dependencies
-#include <nfd.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <glad/glad.h>
+#include <fmt/core.h>
 
 // Internal dependencies
 #include <system/windowCaptureService.h>
@@ -19,6 +21,8 @@
 #include <ml/onnxruntimeInference.h>
 #include <utils.h>
 
+// Tasks
+#include <bot/tasks/findTabTask.h>
 
 BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window)
 	, _inputManager(InputManager::GetInstance())
@@ -31,13 +35,12 @@ BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	_modelPath = nullptr;
+	// Pre-initialize tasks
+	_tasks.push_back(new FindTabTask());
 }
 
 BotManagerWindow::~BotManagerWindow()
 {
-	if (_modelPath != nullptr) delete[] _modelPath;
-	if (_model != nullptr) delete _model;
 	glDeleteTextures(1, &_frameTexId);
 }
 
@@ -46,19 +49,29 @@ void BotManagerWindow::Run(float deltaTime)
 	// Fetch a new copy of the image
 	_frame = _captureService.GetLatestFrame();
 
-	if (!_inputManager.IsCapsLockOn())
-	{
-		_isBotRunning = false;
-		_curTargetBoxState = nullptr;
-	}
-	else if (_model != nullptr)
-	{
-		_isBotRunning = true;
-	}
-
 	if (_isBotRunning)
 	{
-		runBotInference(deltaTime, _frame);
+		if (!_mouseMovementDatabase.IsLoaded())
+		{
+			_mouseMovementDatabase.LoadMovements();
+		}
+
+		// TODO: Move this to the tasks API once we have that
+		// runMineCopperTask(deltaTime);
+		runTabFinderTask(deltaTime);
+
+		// Run tasks
+		for (auto task : _tasks)
+		{
+			task->Run(deltaTime);
+		}
+
+		// Draw cursor
+		cv::Point mousePos;
+		_inputManager.GetMousePosition(mousePos);
+		mousePos = _captureService.SystemToFrameCoordinates(mousePos, _frame);
+		cv::drawMarker(_frame, mousePos, {	0,	0,	0}, cv::MARKER_CROSS, 22, 3, cv::LINE_AA);
+		cv::drawMarker(_frame, mousePos, {255,255,255}, cv::MARKER_CROSS, 18, 1, cv::LINE_AA);
 	}
 
 	if (ImGui::Begin("Bot", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
@@ -78,64 +91,69 @@ void BotManagerWindow::Run(float deltaTime)
 			{
 				ImGuiPanelGuard taskPanel("Tasks Panel");
 
-				static int numTasks = 0;
 				ImGui::TextWrapped("Use this panel to configure the bot's tasks.");
 
-				ImGui::TextUnformatted("Hardcoded Task:");
-				ImGui::TextUnformatted("Mine Copper Ore");
-
-				// Print current movement information
-				if (_curMouseMovement.IsValid())
-				{
-					ImGui::Text("Current Movement:");
-					ImGui::Text("Points: %zu", _curMouseMovement.points.size());
-					ImGui::Text("Distance: %.2f", _curMouseMovement.IniEndDistance());
-					ImGui::Text("Angle: %.2f", _curMouseMovement.GetAngle());
-
-					// Current point information
-					if (!_curMouseMovement.points.empty())
-					{
-						const MousePoint& curPoint = _curMouseMovement.points[0];
-						ImGui::Text("Current Point:");
-						ImGui::Text("X: %d, Y: %d", curPoint.pos.x, curPoint.pos.y);
-						ImGui::Text("Delta Time: %.2f", curPoint.deltaTime);
-					}
-				}
-				if (_curTargetBoxState != nullptr)
-				{
-					ImGui::Text("Current Target:");
-					int targetBoxIndex = 0;
-					for (auto& state : _detectionsStates)
-					{
-						if (&state == _curTargetBoxState)
-						{
-							break;
-						}
-						targetBoxIndex++;
-					}
-					ImGui::Text("Index: %d", targetBoxIndex);
-					ImGui::Text("Class: %d", _curTargetBoxState->box.classId);
-					ImGui::Text("X: %f, Y: %f", _curTargetBoxState->box.x, _curTargetBoxState->box.y);
-					ImGui::Text("W: %f, H: %f", _curTargetBoxState->box.w, _curTargetBoxState->box.h);
-				}
+				// ImGui::TextUnformatted("Hardcoded Task:");
+				// ImGui::TextUnformatted("Mine Copper Ore");
+				// // Print current movement information
+				// if (_curMouseMovement.IsValid())
+				// {
+				// 	ImGui::Text("Current Movement:");
+				// 	ImGui::Text("Points: %zu", _curMouseMovement.points.size());
+				// 	ImGui::Text("Distance: %.2f", _curMouseMovement.IniEndDistance());
+				// 	ImGui::Text("Angle: %.2f", _curMouseMovement.GetAngle());
+				// 	// Current point information
+				// 	if (!_curMouseMovement.points.empty())
+				// 	{
+				// 		const MousePoint& curPoint = _curMouseMovement.points[0];
+				// 		ImGui::Text("Current Point:");
+				// 		ImGui::Text("X: %d, Y: %d", curPoint.pos.x, curPoint.pos.y);
+				// 		ImGui::Text("Delta Time: %.2f", curPoint.deltaTime);
+				// 	}
+				// }
+				// if (_curTargetBoxState != nullptr)
+				// {
+				// 	ImGui::Text("Current Target:");
+				// 	int targetBoxIndex = 0;
+				// 	for (auto& state : _detectionsStates)
+				// 	{
+				// 		if (&state == _curTargetBoxState)
+				// 		{
+				// 			break;
+				// 		}
+				// 		targetBoxIndex++;
+				// 	}
+				// 	ImGui::Text("Index: %d", targetBoxIndex);
+				// 	ImGui::Text("Class: %d", _curTargetBoxState->box.classId);
+				// 	ImGui::Text("X: %f, Y: %f", _curTargetBoxState->box.x, _curTargetBoxState->box.y);
+				// 	ImGui::Text("W: %f, H: %f", _curTargetBoxState->box.w, _curTargetBoxState->box.h);
+				// }
 
 				ImGui::Separator();
 				if (ImGui::Button("Add Task"))
 				{
-					numTasks++;
+					// TODO: Add task
 				}
 
-				for (int i = 0; i < numTasks; i++)
+				static std::vector<float> lastTaskSizes(_tasks.size());
+				lastTaskSizes.resize(_tasks.size());
+				for (int i = 0; i < _tasks.size(); i++)
 				{
 					ImGui::PushID(i);
-					ImGui::BeginChild("Task", ImVec2(0, 50), true, ImGuiWindowFlags_NoScrollbar);
-					ImGui::Text("This task is a placeholder.");
-					if (ImGui::Button("Delete Task"))
 					{
-						numTasks--;
+						// TODO: Draw inputs/output validation errors
+						ImGuiPanelGuard taskPanel(_tasks[i]->GetName(), ImVec2(0, lastTaskSizes[i]),
+							true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+						float cursorIniY = ImGui::GetCursorPosY();
+						_tasks[i]->Draw();
+						lastTaskSizes[i] = (ImGui::GetCursorPosY() - cursorIniY) + 40.0f;
+
+						if (ImGui::Button("Delete Task"))
+						{
+							// TODO: Delete task
+						}
 					}
-					ImGui::EndChild();
-					// ImGui::Spacing(); // Add some spacing between tasks
 					ImGui::PopID();
 				}
 			}
@@ -146,88 +164,29 @@ void BotManagerWindow::Run(float deltaTime)
 			ImGui::TableNextColumn();
 			{
 				{
-					ImGuiPanelGuard botManager("Bot Manager", { 0, 60 });
+					ImGuiPanelGuard botManager("Bot Manager", { 0, 50 });
 
 					ImGui::Text("Use this panel to control the bot.");
+					static int numClasses = 8;
+					static float confidenceThreshold = 0.7f;
 					if (!_isBotRunning)
 					{
-						const bool isModelUnloaded = _model == nullptr;
-						ImGui::BeginDisabled(isModelUnloaded);
-						if (ImGui::Button("Start Bot"))
+						if (ImGui::Button("Start Bot") ||  _inputManager.IsCapsLockOn())
 						{
-							_isBotRunning = true;
-							_mouseMovementDatabase.LoadMovements();
-						}
-						ImGui::EndDisabled();
-						if (isModelUnloaded && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-						{
-							ImGui::BeginTooltip();
-							ImGui::Text("Load a model before starting the bot.");
-							ImGui::EndTooltip();
-						}
-
-						ImGui::SameLine();
-						ImGui::BeginDisabled(_modelPath == nullptr);
-						if (ImGui::Button(isModelUnloaded ? "Load Model" : "Reload Model"))
-						{
-							// Cleanup old model
-							if (_model != nullptr)
+							// Try to load all tasks
+							bool sucess = true;
+							for (auto task : _tasks)
 							{
-								delete _model;
+								if (!task->Load())
+								{
+									sucess = false;
+									break;
+								}
 							}
 
-							// Load new model
-							_model = new YOLOv8(8 /*8 ore categories (subjected to change)*/, 0.85);
-							_model->LoadModel(true, _modelPath);
-
-							// And run warm-up inference
-							_detectionsStates.clear();
-							runBotInference(deltaTime, _frame);
-						}
-						ImGui::EndDisabled();
-						if (_modelPath == nullptr && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-						{
-							ImGui::BeginTooltip();
-							ImGui::Text("Select a model file first.");
-							ImGui::EndTooltip();
-						}
-
-						ImGui::SameLine();
-						static std::string modelPathStr;
-						if (_modelPath != nullptr)
-						{
-							modelPathStr = WideStringToUTF8(_modelPath);
-						}
-						else
-						{
-							modelPathStr.clear();
-						}
-
-						// Set darker background color for the input text
-						ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
-						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-						ImGui::InputTextWithHint("##modelPath", "Click to select model path...", modelPathStr.data(), modelPathStr.size(), ImGuiInputTextFlags_ReadOnly);
-						ImGui::PopStyleColor();
-
-						if (ImGui::IsItemClicked())
-						{
-							NFD::Guard dialogGuard;
-							nfdnchar_t* outPath = nullptr;
-							nfdresult_t result = NFD::OpenDialog(outPath);
-							if (result == NFD_OKAY)
-							{
-								if (_modelPath != nullptr) delete[] _modelPath;
-								size_t pathLen = wcslen(outPath) + 1;
-								_modelPath = new wchar_t[pathLen];
-								std::memcpy(_modelPath, outPath, pathLen * sizeof(wchar_t));
-
-								NFD::FreePath(outPath);
-							}
-							else if (result == NFD_ERROR)
-							{
-								const char* error = NFD::GetError();
-								std::cerr << "Error: " << error << std::endl;
-							}
+							// Set state accordingly
+							_isBotRunning = sucess;
+							_inputManager.SetCapsLock(sucess);
 						}
 					}
 					else
@@ -235,6 +194,17 @@ void BotManagerWindow::Run(float deltaTime)
 						if (ImGui::Button("Stop Bot"))
 						{
 							_isBotRunning = false;
+							_inputManager.SetCapsLock(false);
+						}
+
+						// Screenshot
+						const bool screenshotShortcut = _inputManager.IsShiftPressed() && _inputManager.IsTabPressed();
+						if (!screenshotShortcut) _isScreenshotTaken = false; // Reset flag
+						ImGui::SameLine();
+						if (ImGui::Button("Take Screenshot") || (screenshotShortcut && !_isScreenshotTaken))
+						{
+							_isScreenshotTaken = true;
+							takeScreenshotAndSaveLables();
 						}
 					}
 				}
@@ -250,10 +220,10 @@ void BotManagerWindow::Run(float deltaTime)
 	}
 }
 
-void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
+void BotManagerWindow::runBotInference(float deltaTime)
 {
 	// Run YOLO inference
-	_model->Inference(frame, _detections);
+	// _model->Inference(_frame, _detections);
 
 	// Filter out the detections that overlap
 	size_t detectionCount = _detections.size();
@@ -280,19 +250,22 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 			}
 		}
 	}
+}
 
+void BotManagerWindow::runMineCopperTask(float deltaTime)
+{
 	// Before we update the box states, we need to increment the last seen
 	// time for each box state, and remove the ones that have not been seen
 	for (auto it = _detectionsStates.begin(); it != _detectionsStates.end();)
 	{
 		DetectionBoxState& boxState = *it;
 		boxState.lastSeen += deltaTime;
-		if (boxState.lastSeen > 10.0f) // TODO: Make this a configurable value
+		if (boxState.lastSeen > 5.0f) // TODO: Make this a configurable value
 		{
 			// Reset clicked pointer if removed
 			if (_curTargetBoxState == &boxState)
 			{
-				_curTargetBoxState = nullptr;
+				resetCurrentBoxTarget();
 			}
 			it = _detectionsStates.erase(it);
 		}
@@ -319,7 +292,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 					// Reset clicked pointer
 					if (_curTargetBoxState == &boxState)
 					{
-						_curTargetBoxState = nullptr;
+						resetCurrentBoxTarget();
 					}
 				}
 
@@ -354,10 +327,10 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 		if (detection.classId == 4) { color = cv::Scalar(180, 130, 70); 	label = "Mithril";	};
 		if (detection.classId == 5) { color = cv::Scalar(192, 192, 192);	label = "Silver";	};
 		if (detection.classId == 6) { color = cv::Scalar(193, 205, 205);	label = "Tin";		};
-		if (detection.classId == 7) { color = cv::Scalar(0, 0, 0);			label = "Wasted";	};
-		cv::rectangle(frame, rect, color, 2);
-		label += " (" + std::to_string(i++) + ":" + std::to_string(state.lastSeen) + "s)";
-		cv::putText(frame, label, rect.tl() - cv::Point{0, 15}, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1.0, color, 2);
+		if (detection.classId == 7) { color = cv::Scalar(0, 0, 0);			label = "Depleted";	};
+		cv::rectangle(_frame, rect, color, 2);
+		label += fmt::format(" ({}:{:.3f}s)", i++, state.lastSeen);
+		cv::putText(_frame, label, rect.tl() - cv::Point{0, 15}, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1.0, color, 2);
 	}
 
 	// Update mouse movement database
@@ -365,7 +338,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 
 	// TEST: Fetch closes copper ore to center of screen (player) and
 	// query a mouse movement from current mouse position to that point
-	cv::Point playerPos(frame.cols / 2, frame.rows / 2);
+	cv::Point playerPos(_frame.cols / 2, _frame.rows / 2);
 	cv::Point closestCopperPos;
 	float closestCopperRadius = 0.0f;
 	float closestCopperDistance = FLT_MAX;
@@ -378,15 +351,13 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 		const auto& detection = state.box;
 		if (detection.classId != 2) continue; // Copper
 
-		const float halfWidth = detection.w / 2;
-		const float halfHeight = detection.h / 2;
-		cv::Point copperPos(detection.x + halfWidth, detection.y + halfHeight);
+		cv::Point copperPos = detection.GetCenter();
 		float distance = cv::norm(playerPos - copperPos);
 		if (distance < closestCopperDistance)
 		{
 			closestCopperDistance = distance;
 			closestCopperPos = copperPos;
-			closestCopperRadius = std::min(halfWidth, halfHeight);
+			closestCopperRadius = std::min(detection.w / 2, detection.h / 2);
 			closestCopperBox = &state;
 		}
 	}
@@ -401,7 +372,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 	cv::Point mousePos;
 	{
 		_inputManager.GetMousePosition(mousePos);
-		closestCopperPos = _captureService.FrameToSystemCoordinates(closestCopperPos, frame);
+		closestCopperPos = _captureService.FrameToSystemCoordinates(closestCopperPos, _frame);
 	}
 
 	// We are seeking a new target box and we found one
@@ -416,6 +387,8 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 		{
 			_curTargetBoxState = closestCopperBox;
 			_curMouseMovement = std::move(bestMovement);
+			// Reset next movement so we don't play bits of it after we are done with the current one
+			_nextMouseMovement.~MouseMovement();
 		}
 	}
 
@@ -426,7 +399,7 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 		// We have a valid movement, consume it
 		if (_curMouseMovement.IsValid())
 		{
-			drawMouseMovement(_curMouseMovement, frame);
+			drawMouseMovement(_curMouseMovement, _frame);
 
 			// Play the movement
 			MousePoint& point = _curMouseMovement.points[0];
@@ -459,36 +432,140 @@ void BotManagerWindow::runBotInference(float deltaTime, cv::Mat& frame)
 			if (_curTargetBoxState->box.classId != 2) // Not copper anymore
 			{
 				// It was mined
-				_curTargetBoxState = nullptr;
+				resetCurrentBoxTarget();
 			}
-			else if (_curTargetBoxState->box.classId == 2)
+			else // Still copper
 			{
-				// We are still mining it
-			}
-			else if (_nextMouseMovement.IsValid())
-			{
-				drawMouseMovement(_nextMouseMovement, frame);
-
-				// Play the movement
-				MousePoint& point = _nextMouseMovement.points[0];
-				point.deltaTime -= deltaTime;
-				if (point.deltaTime <= 0.0f) // Consume point
+				// We could be still mining it, or it got collected and respawned when we had no tracking of it
+				// So we use a timer to ensure that if it takes more than 5s we will be resetting the target
+				if (_curTargetBoxState->lastSeen > 0.0f)
 				{
-					_nextMouseMovement.points.erase(_nextMouseMovement.points.begin());
-					_inputManager.SetMousePosition(point.pos);
-				}
-			}
-			else // We are idle
-			{
-				// So if there is a new target, we can start moving towards it
-				if (closestCopperBox != nullptr && closestCopperBox != _curTargetBoxState)
-				{
-					// TODO: Implement this
+					// Flag that we are using a timer, as the state of the ore is now unkown (lost tracking)
+					// TODO: Remove this once we get a good enough model that doesn't lose track of the ore
+					if (!_useWaitTimer)
+					{
+						_waitTimer = 0.0f;
+						_useWaitTimer = true;
+					}
 				}
 
-				// For now just pick a *lengthy* random movement close to the current position
-				_mouseMovementDatabase.QueryMovement(mousePos, mousePos, 400.0f, _nextMouseMovement, 1.5f, 20.0f);
+				if (_useWaitTimer)
+				{
+					_waitTimer += deltaTime;
+				}
+				if (_waitTimer > 10.0f)
+				{
+					resetCurrentBoxTarget();
+				}
+				else // Meanwhile we can move the mouse around just to be fancy
+				{
+					if (!_nextMouseMovement.IsValid()) // We may fetch a new movement
+					{
+						// If our cursor is already in the right spot, just be idle
+						if (cv::norm(mousePos - closestCopperPos) < closestCopperRadius * 0.85f)
+						{
+							_mouseMovementDatabase.QueryMovement(mousePos, mousePos, 200.0f, _nextMouseMovement, 0.7f, 20.0f);
+						}
+						else
+						{
+							// If there is a closest box that's not our target, pick a movement to it
+							if (closestCopperBox != _curTargetBoxState)
+							{
+								_mouseMovementDatabase.QueryMovement(mousePos, closestCopperPos, closestCopperRadius * 0.85f, _nextMouseMovement, 0.0f, 1.5f);
+							}
+							else // Otherwise we can just do some random movements
+							{
+								_mouseMovementDatabase.QueryMovement(mousePos, mousePos, 200.0f, _nextMouseMovement, 1.0f, 20.0f);
+							}
+						}
+					}
+					else // Play the mouse movement
+					{
+						drawMouseMovement(_nextMouseMovement, _frame);
+
+						// Play the movement
+						MousePoint& point = _nextMouseMovement.points[0];
+						point.deltaTime -= deltaTime;
+						if (point.deltaTime <= 0.0f) // Consume point
+						{
+							_inputManager.SetMousePosition(point.pos);
+							_nextMouseMovement.points.erase(_nextMouseMovement.points.begin());
+						}
+					}
+				}
 			}
 		}
 	}
+}
+
+void BotManagerWindow::runTabFinderTask(float deltaTime)
+{
+	// Draw rectangles on the image frame
+	int i = 0;
+	for (const auto& detection : _detections)
+	{
+		cv::Rect rect(detection.x, detection.y, detection.w, detection.h);
+
+		std::string label;
+		cv::Scalar color = cv::Scalar(255, 255, 255);
+		if (detection.classId == 0	) { label = "Attack Style Tab";	};
+		if (detection.classId == 1	) { label = "Friends List Tab";	};
+		if (detection.classId == 2	) { label = "Inventory Tab";	};
+		if (detection.classId == 3	) { label = "Magic Tab";		};
+		if (detection.classId == 4	) { label = "Prayer Tab";		};
+		if (detection.classId == 5	) { label = "Quests Tab";		};
+		if (detection.classId == 6	) { label = "Skills Tab";		};
+		if (detection.classId == 7	) { label = "Equipments Tab";	};
+
+		cv::rectangle(_frame, rect, color, 2);
+		cv::putText(_frame, label, rect.tl() - cv::Point{0, 15}, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1.0, color, 2);
+
+		// Generate an image for the tab
+		cv::Mat tabImage = _frame(rect).clone();
+
+		// Visualize image
+		cv::imshow("Tab", tabImage);
+	}
+}
+
+void BotManagerWindow::resetCurrentBoxTarget()
+{
+	_curTargetBoxState = nullptr;
+	_curMouseMovement.~MouseMovement();
+	_nextMouseMovement.~MouseMovement();
+	_curClickState = MOUSE_CLICK_NONE;
+	_useWaitTimer = false;
+	_waitTimer = 0.0f;
+}
+
+void BotManagerWindow::takeScreenshotAndSaveLables()
+{
+	// We fetch a clean copy of the frame (no drawings on top of it)
+	cv::Mat cleanFrame = _captureService.GetLatestFrame();
+
+	// Make sure there is a screenshot folder to save to
+	std::filesystem::create_directory("screenshots");
+
+    // Fetch current system time for the screenshot
+    std::time_t t = std::time(nullptr);
+    std::tm tm;
+    localtime_s(&tm, &t);
+
+	// Save the frame to a file (using localtime to get a unique name)
+	std::string framePath = fmt::format("screenshots/screenshot_{:04d}{:02d}{:02d}_{:02d}{:02d}{:02d}",
+		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+	cv::imwrite(framePath + ".png", cleanFrame);
+
+	// Write the box states to a .txt file with the same name as the screenshot
+	std::ofstream boxStateFile(framePath + ".txt");
+	for (auto& state : _detectionsStates)
+	{
+		// Normalize coordinates
+		state.box.x /= cleanFrame.cols;
+		state.box.y /= cleanFrame.rows;
+		state.box.w /= cleanFrame.cols;
+		state.box.h /= cleanFrame.rows;
+		boxStateFile << fmt::format("{} {} {} {} {}\n", state.box.classId, state.box.x, state.box.y, state.box.w, state.box.h);
+	}
+	boxStateFile.close();
 }

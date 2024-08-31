@@ -25,7 +25,7 @@
 
 #include <utils.h>
 
-#include <bot/ibotwindow.h>
+#include <bot/ibotWindow.h>
 #include <bot/botManagerWindow.h>
 #include <bot/trainingLabWindow.h>
 
@@ -52,7 +52,9 @@ int main(int argc, char** argv)
 
     // Initialize GLFW
     if (!glfwInit())
+	{
         return -1;
+	}
 
     // Set GLFW window hints
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);

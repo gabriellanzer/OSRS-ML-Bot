@@ -2,6 +2,7 @@
 
 // Std dependencies
 #include <fstream>
+#include <iostream>
 
 // Third party dependencies
 #include <nlohmann/json.hpp>
@@ -42,7 +43,15 @@ void MouseMovementDatabase::LoadMovements()
 {
 	std::ifstream file("mouse_movements.json");
 	nlohmann::json j;
-	file >> j;
+	try
+	{
+		file >> j;
+	}
+	catch (const std::exception& ex)
+	{
+		std::cout << "Mouse movements load error! Msg: " << ex.what() << std::endl;
+		return;
+	}
 	file.close();
 
 	_mouseMovements.clear();
@@ -170,7 +179,8 @@ void MouseMovementDatabase::QueryMovement(cv::Point iniPos, cv::Point endPos, fl
 	}
 
 	// Resize down to remove non-matching candidates (unless there are only soft-matches)
-	_queryCandidatesIds.resize(numMatches ? numMatches : numRelaxedMatches);
+	if (numMatches == 0) numMatches = numRelaxedMatches;
+	_queryCandidatesIds.resize(numMatches);
 
 	// Sort by angle
 	std::sort(_queryCandidatesIds.begin(), _queryCandidatesIds.end(), [&](const int a, const int b)

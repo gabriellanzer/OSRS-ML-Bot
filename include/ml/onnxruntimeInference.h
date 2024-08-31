@@ -45,7 +45,7 @@ struct YoloDetectionBox
     float x, y, w, h;
     int classId;
 
-	bool IsSimilar(const YoloDetectionBox& other, float centerThreshold = 100.0f, float overlapRatioThreshold = 0.2f) const
+	bool IsSimilar(const YoloDetectionBox& other, float centerThreshold = 100.0f, float overlapRatioThreshold = 0.3f) const
 	{
 		// TODO: Re-evaluate this function
 		// // Check center distance first
@@ -82,22 +82,9 @@ struct YoloDetectionBox
 		return overlapRatio > overlapRatioThreshold;
 	}
 
-	bool Overlaps(const YoloDetectionBox& other) const
+	cv::Point GetCenter() const
 	{
-		float x1 = x;
-		float y1 = y;
-		float x2 = x + w;
-		float y2 = y + h;
-
-		float x3 = other.x;
-		float y3 = other.y;
-		float x4 = other.x + other.w;
-		float y4 = other.y + other.h;
-
-		if (x1 > x4 || x2 < x3) return false;
-		if (y1 > y4 || y2 < y3) return false;
-
-		return true;
+		return cv::Point(x + w / 2, y + h / 2);
 	}
 
 	YoloDetectionBox Merge(const YoloDetectionBox& other) const
@@ -135,6 +122,9 @@ class YOLOv8 : public YOLOInterfaceBase
 	YOLOv8(int classNumber, float confidenceThreshold) : YOLOInterfaceBase({ "images" }, { "output0" }, { 1, 3, 640, 640 })
 		, _classNumber(classNumber), _confidenceThreshold(confidenceThreshold) {}
 	virtual void Inference(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes) override;
+
+	void SetConfidenceThreshold(float threshold) { _confidenceThreshold = threshold; }
+	void SetClassNumber(int classNumber) { _classNumber = classNumber; }
 
   protected:
 	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) override;

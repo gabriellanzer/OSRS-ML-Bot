@@ -100,9 +100,10 @@
 			"2211896472.snippets",
 			"cschlosser.doxdocgen",
 			"jeff-hykin.better-cpp-syntax",
-			"jaccon.punk-dark-theme",
 			"vadimcn.vscode-lldb",
-			"tboox.xmake-vscode"
+			"tboox.xmake-vscode",
+			"abhiraj-chaudhuri.nyctophilia-color-theme",
+			"ms-vscode.cpptools"
 		]
 	},
 	"recommendations": [

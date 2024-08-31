@@ -34,6 +34,8 @@ public:
 	bool IsEscapePressed() const;
 	bool IsTabPressed() const;
 	bool IsCapsLockOn() const;
+	bool IsShiftPressed() const;
+	void SetCapsLock(bool state);
 
 private:
 	InputManager();

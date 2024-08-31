@@ -17,6 +17,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <glad/glad.h>
+#include <nfd.hpp>
 
 // Internal dependencies
 #include <system/mouseMovement.h>
@@ -51,11 +52,14 @@ inline void drawWindowTitle(const char* title, ImVec2 windowPos)
 
 	// Get the draw list and draw the border around the text
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	ImVec2 textSize = ImGui::CalcTextSize(title);
-	ImVec2 borderMin = ImVec2(textPos.x - 3, textPos.y - 2);
-	ImVec2 borderMax = ImVec2(textPos.x + textSize.x + 2, textPos.y + textSize.y + 2);
-	drawList->AddRectFilled(borderMin, borderMax, ImGui::GetColorU32(ImGuiCol_TitleBg));
-	drawList->AddRect(borderMin, borderMax, ImGui::GetColorU32(ImGuiCol_Border));
+	if (!drawList->CmdBuffer.empty())
+	{
+		ImVec2 textSize = ImGui::CalcTextSize(title);
+		ImVec2 borderMin = ImVec2(textPos.x - 3, textPos.y - 2);
+		ImVec2 borderMax = ImVec2(textPos.x + textSize.x + 2, textPos.y + textSize.y + 2);
+		drawList->AddRectFilled(borderMin, borderMax, ImGui::GetColorU32(ImGuiCol_TitleBg));
+		drawList->AddRect(borderMin, borderMax, ImGui::GetColorU32(ImGuiCol_Border));
+	}
 
 	// Draw text with border on top of the child window
 	ImGui::SetCursorScreenPos(textPos);
@@ -139,6 +143,37 @@ inline void drawHorizontalSeparator(float& prevHeight, float& nextHeight, float 
 	prevHeight = std::max(minPrevHeight, std::min(availableSize - minNextHeight, prevHeight + delta));
 	nextHeight = std::max(minNextHeight, std::min(availableHeight, nextHeight - delta));
 	ImGui::PopStyleVar();
+}
+
+inline int drawFilePicker(const char* label, const char* hint, wchar_t*& inOutPath)
+{
+	static std::string modelPathStr;
+	if (inOutPath != nullptr)
+		modelPathStr = WideStringToUTF8(inOutPath);
+	else
+		modelPathStr.clear();
+
+	// Set darker background color for the input text
+	ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+	ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+	ImGui::InputTextWithHint("##modelPath", "Click to select model path...", modelPathStr.data(), modelPathStr.size(), ImGuiInputTextFlags_ReadOnly);
+	ImGui::PopStyleColor();
+
+	if (ImGui::IsItemClicked())
+	{
+		NFD::Guard dialogGuard;
+		nfdnchar_t* outPath = nullptr;
+		nfdresult_t result = NFD::OpenDialog(outPath);
+		if (result == NFD_OKAY)
+		{
+			if (inOutPath != nullptr) delete[] inOutPath;
+			size_t pathLen = wcslen(outPath) + 1;
+			inOutPath = new wchar_t[pathLen];
+			std::memcpy(inOutPath, outPath, pathLen * sizeof(wchar_t));
+			NFD::FreePath(outPath);
+		}
+		return result;
+	}
 }
 
 // Function to convert HSV to RGB

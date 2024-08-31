@@ -165,10 +165,8 @@ void TrainingLabWindow::Run(float deltaTime)
 	{
 		// Fetch a new copy of the image
 		_frame = _captureService.GetLatestFrame();
-		// TODO: Draw the mouse-movement lines on the image
 
 		ImGui::SeparatorText("Welcome to the Training Lab!");
-
 		if (ImGui::BeginTable("##trainingTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable))
 		{
 			float minTasksPanelWidth = std::max(200.0f, ImGui::GetContentRegionAvail().x * 0.2f);
@@ -296,13 +294,15 @@ void TrainingLabWindow::Run(float deltaTime)
 						ImGui::Text("End Point: (%i, %i)", movement.points.back().pos.x, movement.points.back().pos.y);
 						ImGui::TextUnformatted("Click to select, then 'Delete' to remove this movement.");
 						ImGui::EndTooltip();
+						_hovMouseMovement = &mouseMovements[i];
 					}
 				}
 				if (_selMouseMovement != nullptr && glfwGetKey(_nativeWindow, GLFW_KEY_DELETE) == GLFW_PRESS)
 				{
 					size_t rmvId = _selMouseMovement - mouseMovements.data();
-					mouseMovements.erase(mouseMovements.begin() + rmvId);
+					if (_hovMouseMovement == _selMouseMovement) _hovMouseMovement = nullptr;
 					_selMouseMovement = nullptr;
+					mouseMovements.erase(mouseMovements.begin() + rmvId);
 				}
 				if (mouseMovements.empty())
 				{
@@ -336,6 +336,11 @@ void TrainingLabWindow::Run(float deltaTime)
 						// Then draw the movement
 						drawMouseMovement(*_selMouseMovement, _frame);
 					}
+					if (_hovMouseMovement != nullptr)
+					{
+						// Then draw the movement
+						drawMouseMovement(*_hovMouseMovement, _frame);
+					}
 
 					// Screen View
 					ImGui::TableNextRow();
@@ -367,16 +372,15 @@ void TrainingLabWindow::Run(float deltaTime)
 						else
 						{
 							// Compute histograms
-							std::vector<float> mouseUpHistogram;
-							std::vector<float> mouseDownHistogram;
-							ComputeMovementsHistogram(mouseMovements, mouseUpHistogram);
+							std::vector<float> mouseHistogram;
+							ComputeMovementsHistogram(mouseMovements, mouseHistogram);
 
 							auto [availableWidth, availableHeight] = ImGui::GetContentRegionAvail();
 							float plotWidth = std::max(availableWidth * 0.7f, 400.0f);
 
 							float paddingWidth = (availableWidth - plotWidth) / 2.0f;
 							ImGui::Dummy({ paddingWidth, 0 }); ImGui::SameLine();
-							ImGui::PlotHistogram("##histogram", mouseDownHistogram.data(), mouseDownHistogram.size(),
+							ImGui::PlotHistogram("##histogram", mouseHistogram.data(), mouseHistogram.size(),
 											0, "Number of paths by distance (type = MOUSE_DOWN, granularity = 50px)",
 											0.0f, FLT_MAX, ImVec2(plotWidth, availableHeight * 0.9f));
 						}

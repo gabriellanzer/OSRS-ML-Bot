@@ -7,7 +7,7 @@
 #include <opencv2/core.hpp>
 
 // Internal dependencies
-#include <bot/ibotwindow.h>
+#include <bot/ibotWindow.h>
 #include <system/mouseMovement.h>
 
 class TrainingLabWindow : public IBotWindow
@@ -38,6 +38,7 @@ class TrainingLabWindow : public IBotWindow
 	bool _playbackMouseMovement = false;
 	MouseMovement* _curMouseMovement = nullptr;
 	MouseMovement* _selMouseMovement = nullptr;
+	MouseMovement* _hovMouseMovement = nullptr;
 	std::vector<MouseMovement> _playbackMouseMovements;
 	MouseClickState _playbackClickState = MOUSE_CLICK_NONE;
 };

@@ -9,7 +9,7 @@
 // Internal dependencies
 #include <system/mouseMovement.h>
 #include <ml/onnxruntimeInference.h>
-#include <bot/ibotwindow.h>
+#include <bot/ibotWindow.h>
 
 struct DetectionBoxState
 {
@@ -26,25 +26,33 @@ public:
 	virtual void Run(float deltaTime) override;
 
 private:
-	void runBotInference(float deltaTime, cv::Mat& frame);
+	void runBotInference(float deltaTime);
+	void runMineCopperTask(float deltaTime);
+	void runTabFinderTask(float deltaTime);
+	void resetCurrentBoxTarget();
+	void takeScreenshotAndSaveLables();
 
 	// Helper references
 	class InputManager& _inputManager;
 	class WindowCaptureService& _captureService;
 	class MouseMovementDatabase& _mouseMovementDatabase;
 
-	// Internal state
-	wchar_t* _modelPath = nullptr;
-	YOLOInterfaceBase* _model = nullptr;
+	// Tasks
+	std::vector<class IBotTask*> _tasks;
 
 	cv::Mat _frame;
 	uint32_t _frameTexId;
 
 	bool _isBotRunning = false;
-	std::vector<YoloDetectionBox> _detections;
-	std::list<DetectionBoxState> _detectionsStates;
+
+	// flag to avoid taking multiple screenshots
+	bool _isScreenshotTaken = false;
 
 	// TODO: move this to a task
+	std::vector<YoloDetectionBox> _detections;
+	std::list<DetectionBoxState> _detectionsStates;
+	bool _useWaitTimer = false;
+	float _waitTimer = 0.0f;
 	MouseMovement _curMouseMovement;
 	MouseMovement _nextMouseMovement;
 	MouseClickState _curClickState = MOUSE_CLICK_NONE;

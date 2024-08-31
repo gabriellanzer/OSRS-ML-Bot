@@ -99,6 +99,25 @@ bool InputManager::IsCapsLockOn() const
 	return GetKeyState(VK_CAPITAL) & 1;
 }
 
+bool InputManager::IsShiftPressed() const
+{
+	return GetAsyncKeyState(VK_SHIFT) & 0x8000;
+}
+
+void InputManager::SetCapsLock(bool state)
+{
+    // Get the current state of the Caps Lock key
+    bool capsLockState = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
+
+    // If the current state is different from the desired state, toggle the Caps Lock key
+    if (capsLockState != state) {
+        // Simulate key press
+        keybd_event(VK_CAPITAL, 0x3A, 0, 0);
+        // Simulate key release
+        keybd_event(VK_CAPITAL, 0x3A, KEYEVENTF_KEYUP, 0);
+    }
+}
+
 void InputManager::trackMouse()
 {
 	while (_running)

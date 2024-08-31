@@ -16,6 +16,8 @@ class MouseMovementDatabase
 	void UpdateDatabase();
 	void QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, MouseMovement& outMovements, float minTime = 0.0f, float maxTime = 10.0f);
 
+	bool IsLoaded() const { return !_mouseMovements.empty(); }
+
 	std::vector<MouseMovement>& GetMovements() { return _mouseMovements; }
 
   private:

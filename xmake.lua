@@ -33,13 +33,15 @@ target("osrs-bot")
 	if is_mode("debug") then
 		add_defines("DEBUG_BUILD");
 		set_targetdir("bin/Debug/")
-	elseif is_mode("release") then
+	elseif is_mode("release") or is_mode("releasedbg") then
 		add_defines("RELEASE_BUILD");
 		set_targetdir("bin/Release/")
 	end
 
 	-- Copy the ONNX Runtime DLL to the target directory after build
     after_build(function (target)
+		print("Build finished! Binary files written to " .. target:targetdir())
+
 		print("\n")
 		print("Copying ONNX Runtime DLLs to target directory (required so it doesn't pick system dlls)")
         local onnxruntime_dir = path.join(target:pkg("onnxruntime"):installdir(), "bin")

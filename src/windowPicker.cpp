@@ -161,51 +161,65 @@ LRESULT CALLBACK customWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     CustomWndProcData* windowProcData = reinterpret_cast<CustomWndProcData*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
     switch (uMsg) {
         case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
+			PAINTSTRUCT ps;
+			HDC hdc = BeginPaint(hwnd, &ps);
 
-            // Create a memory device context for double buffering
-            HDC memDC = CreateCompatibleDC(hdc);
-            HBITMAP memBitmap = CreateCompatibleBitmap(hdc, windowProcData->width, windowProcData->height);
-            HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+			// Create a memory device context for double buffering
+			HDC memDC = CreateCompatibleDC(hdc);
+			HBITMAP memBitmap = CreateCompatibleBitmap(hdc, windowProcData->width, windowProcData->height);
+			HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
 
-            // Clear the background
-            RECT rect = {0, 0, windowProcData->width, windowProcData->height};
-            HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(20, 20, 20) : RGB(0, 0, 0));
-            FillRect(memDC, &rect, brush);
-            DeleteObject(brush);
+			// Select a font into the device context
+			HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+			HFONT oldFont = (HFONT)SelectObject(memDC, hFont);
 
-            // Draw the text
-            SetTextColor(memDC, RGB(255, 255, 255));
-            SetBkMode(memDC, TRANSPARENT);
-            std::string label = windowProcData->deviceName;
-            if (windowProcData->hovered) { label += "\n(Click to select)"; }
+			// Clear the background
+			RECT rect = {0, 0, windowProcData->width, windowProcData->height};
+			HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(255, 255, 255) : RGB(0, 0, 0));
+			FillRect(memDC, &rect, brush);
+			DeleteObject(brush);
 
-            // Calculate the height of the text
-            RECT textRect = rect;
-            DrawText(memDC, label.c_str(), -1, &textRect, DT_CENTER | DT_WORDBREAK | DT_CALCRECT);
+			// Draw the text
+			SetTextColor(memDC, RGB(255, 255, 255));
+			SetBkMode(memDC, TRANSPARENT);
+			std::string label = windowProcData->deviceName;
+			if (windowProcData->hovered)
+			{
+				label += "\n(Click to select)";
+			}
 
-            // Adjust the rectangle to center the text vertically
-            int textHeight = textRect.bottom - textRect.top;
-            rect.top = (windowProcData->height - textHeight) / 2;
-            rect.bottom = rect.top + textHeight;
+			// Calculate the height of the text
+			RECT textRect = rect;
+			DrawText(memDC, label.c_str(), -1, &textRect, DT_CENTER | DT_CALCRECT);
 
-            // Draw the text in the adjusted rectangle
-            DrawText(memDC, label.c_str(), -1, &rect, DT_CENTER | DT_WORDBREAK);
+			// Adjust the rectangle to center the text vertically
+			int textHeight = textRect.bottom - textRect.top;
+			rect.top = (windowProcData->height - textHeight) / 2;
+			rect.bottom = rect.top + textHeight;
 
+			// Draw the text in the adjusted rectangle
+			DrawText(memDC, label.c_str(), -1, &rect, DT_CENTER);
 
-            // Copy the memory device context to the window device context
-            BitBlt(hdc, 0, 0, windowProcData->width, windowProcData->height, memDC, 0, 0, SRCCOPY);
+			// Copy the memory device context to the window device context
+			BitBlt(hdc, 0, 0, windowProcData->width, windowProcData->height, memDC, 0, 0, SRCCOPY);
 
-            // Clean up
-            SelectObject(memDC, oldBitmap);
-            DeleteObject(memBitmap);
-            DeleteDC(memDC);
+			// Clean up
+			SelectObject(memDC, oldFont);
+			SelectObject(memDC, oldBitmap);
+			DeleteObject(memBitmap);
+			DeleteDC(memDC);
 
-            EndPaint(hwnd, &ps);
-            break;
+			EndPaint(hwnd, &ps);
+			return 1;
         }
 		case WM_ERASEBKGND: {
+			HDC hdc = (HDC)wParam;
+            RECT rect;
+            GetClientRect(hwnd, &rect);
+            HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(20, 20, 20) : RGB(1, 1, 1));
+            FillRect(hdc, &rect, brush);
+            DeleteObject(brush);
+
             return 1; // Indicate that the background has been erased
         }
         default: {
