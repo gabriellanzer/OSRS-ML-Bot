@@ -86,7 +86,7 @@ void InventoryDropTask::Draw()
 	ImGui::TextUnformatted("Confidence Threshold:");
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-	ImGui::SliderFloat("##confidenceThreshold", &_confidenceThreshold, 0.0f, 1.0f);
+	ImGui::SliderFloat("##confidenceThreshold", &_confidenceThreshold, 0.05f, 1.0f);
 }
 
 void InventoryDropTask::GetInputResources(std::vector<std::string>& resources)

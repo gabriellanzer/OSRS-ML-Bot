@@ -62,17 +62,43 @@ void FindTabTask::Run(float deltaTime)
 	// Run inference
 	_model->Inference(*frame, _detectedTabs);
 
+	// Filter out the detections that overlap
+	size_t detectionCount = _detectedTabs.size();
+	for (int i = 0; i < detectionCount; ++i)
+	{
+		YoloDetectionBox& curBox = _detectedTabs[i];
+		for (int j = i + 1; j < _detectedTabs.size(); j++)
+		{
+			YoloDetectionBox& otherBox = _detectedTabs[j];
+			if (curBox.IsSimilar(otherBox, 0.95f))
+			{
+				// Skip if class is different
+				if (curBox.classId != otherBox.classId) continue;
+
+				// Merge the two detections in current
+				curBox = curBox.Merge(otherBox);
+
+				// Swap with last and pop
+				_detectedTabs[j] = _detectedTabs.back();
+				_detectedTabs.pop_back();
+
+				// Prevent j increment to check the new box
+				--j;
+			}
+		}
+	}
+
 	// Take screenshot and export detection labels
+	if (_shouldOverrideClass)
+	{
+		for (auto& tab : _detectedTabs)
+		{
+			tab.classId = _overrideClass;
+		}
+	}
 	if (_exportDetection)
 	{
 		_exportDetection = false;
-		if (_shouldOverrideClass)
-		{
-			for (auto& tab : _detectedTabs)
-			{
-				tab.classId = _overrideClass;
-			}
-		}
 		exportDetections(*frame, _detectedTabs);
 		return;
 	}
@@ -117,7 +143,7 @@ void FindTabTask::Draw()
 	ImGui::TextUnformatted("Confidence Threshold:");
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-	ImGui::SliderFloat("##confidenceThreshold", &_confidenceThreshold, 0.0f, 1.0f);
+	ImGui::SliderFloat("##confidenceThreshold", &_confidenceThreshold, 0.05f, 1.0f);
 
 	// ===================================== //
 	// Tracking Configuration                //
