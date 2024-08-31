@@ -19,6 +19,8 @@ enum TabClasses
 	TAB_EQUIPMENTS = 7
 };
 
+static const char* TabNames[] = { "Attack Style Tab", "Friends List Tab", "Inventory Tab", "Magic Tab", "Prayer Tab", "Quests Tab", "Skills Tab", "Equipments Tab" };
+
 class FindTabTask : public IBotTask
 {
 public:
@@ -39,6 +41,9 @@ private:
 	// Internal state
 	class YOLOv8* _model;
 	std::vector<YoloDetectionBox> _detectedTabs;
+	bool _exportDetection = false;
+	bool _shouldOverrideClass = false;
+	TabClasses _overrideClass = TAB_INVENTORY;
 
 	// Public state
 	wchar_t* _modelPath = nullptr;

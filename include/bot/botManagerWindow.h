@@ -28,9 +28,7 @@ public:
 private:
 	void runBotInference(float deltaTime);
 	void runMineCopperTask(float deltaTime);
-	void runTabFinderTask(float deltaTime);
 	void resetCurrentBoxTarget();
-	void takeScreenshotAndSaveLables();
 
 	// Helper references
 	class InputManager& _inputManager;
@@ -44,9 +42,6 @@ private:
 	uint32_t _frameTexId;
 
 	bool _isBotRunning = false;
-
-	// flag to avoid taking multiple screenshots
-	bool _isScreenshotTaken = false;
 
 	// TODO: move this to a task
 	std::vector<YoloDetectionBox> _detections;

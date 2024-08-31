@@ -17,12 +17,14 @@
 // Internal dependencies
 #include <system/windowCaptureService.h>
 #include <system/mouseMovementDatabase.h>
+#include <system/resourceManager.h>
 #include <system/inputManager.h>
 #include <ml/onnxruntimeInference.h>
 #include <utils.h>
 
 // Tasks
 #include <bot/tasks/findTabTask.h>
+#include <bot/tasks/inventoryDropTask.h>
 
 BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window)
 	, _inputManager(InputManager::GetInstance())
@@ -37,6 +39,7 @@ BotManagerWindow::BotManagerWindow(GLFWwindow* window) : IBotWindow(window)
 
 	// Pre-initialize tasks
 	_tasks.push_back(new FindTabTask());
+	_tasks.push_back(new InventoryDropTask());
 }
 
 BotManagerWindow::~BotManagerWindow()
@@ -49,16 +52,15 @@ void BotManagerWindow::Run(float deltaTime)
 	// Fetch a new copy of the image
 	_frame = _captureService.GetLatestFrame();
 
+	// Set frame on resource manager
+	ResourceManager::GetInstance().SetResource("Main Frame", &_frame);
+
 	if (_isBotRunning)
 	{
 		if (!_mouseMovementDatabase.IsLoaded())
 		{
 			_mouseMovementDatabase.LoadMovements();
 		}
-
-		// TODO: Move this to the tasks API once we have that
-		// runMineCopperTask(deltaTime);
-		runTabFinderTask(deltaTime);
 
 		// Run tasks
 		for (auto task : _tasks)
@@ -92,42 +94,6 @@ void BotManagerWindow::Run(float deltaTime)
 				ImGuiPanelGuard taskPanel("Tasks Panel");
 
 				ImGui::TextWrapped("Use this panel to configure the bot's tasks.");
-
-				// ImGui::TextUnformatted("Hardcoded Task:");
-				// ImGui::TextUnformatted("Mine Copper Ore");
-				// // Print current movement information
-				// if (_curMouseMovement.IsValid())
-				// {
-				// 	ImGui::Text("Current Movement:");
-				// 	ImGui::Text("Points: %zu", _curMouseMovement.points.size());
-				// 	ImGui::Text("Distance: %.2f", _curMouseMovement.IniEndDistance());
-				// 	ImGui::Text("Angle: %.2f", _curMouseMovement.GetAngle());
-				// 	// Current point information
-				// 	if (!_curMouseMovement.points.empty())
-				// 	{
-				// 		const MousePoint& curPoint = _curMouseMovement.points[0];
-				// 		ImGui::Text("Current Point:");
-				// 		ImGui::Text("X: %d, Y: %d", curPoint.pos.x, curPoint.pos.y);
-				// 		ImGui::Text("Delta Time: %.2f", curPoint.deltaTime);
-				// 	}
-				// }
-				// if (_curTargetBoxState != nullptr)
-				// {
-				// 	ImGui::Text("Current Target:");
-				// 	int targetBoxIndex = 0;
-				// 	for (auto& state : _detectionsStates)
-				// 	{
-				// 		if (&state == _curTargetBoxState)
-				// 		{
-				// 			break;
-				// 		}
-				// 		targetBoxIndex++;
-				// 	}
-				// 	ImGui::Text("Index: %d", targetBoxIndex);
-				// 	ImGui::Text("Class: %d", _curTargetBoxState->box.classId);
-				// 	ImGui::Text("X: %f, Y: %f", _curTargetBoxState->box.x, _curTargetBoxState->box.y);
-				// 	ImGui::Text("W: %f, H: %f", _curTargetBoxState->box.w, _curTargetBoxState->box.h);
-				// }
 
 				ImGui::Separator();
 				if (ImGui::Button("Add Task"))
@@ -195,16 +161,6 @@ void BotManagerWindow::Run(float deltaTime)
 						{
 							_isBotRunning = false;
 							_inputManager.SetCapsLock(false);
-						}
-
-						// Screenshot
-						const bool screenshotShortcut = _inputManager.IsShiftPressed() && _inputManager.IsTabPressed();
-						if (!screenshotShortcut) _isScreenshotTaken = false; // Reset flag
-						ImGui::SameLine();
-						if (ImGui::Button("Take Screenshot") || (screenshotShortcut && !_isScreenshotTaken))
-						{
-							_isScreenshotTaken = true;
-							takeScreenshotAndSaveLables();
 						}
 					}
 				}
@@ -498,36 +454,6 @@ void BotManagerWindow::runMineCopperTask(float deltaTime)
 	}
 }
 
-void BotManagerWindow::runTabFinderTask(float deltaTime)
-{
-	// Draw rectangles on the image frame
-	int i = 0;
-	for (const auto& detection : _detections)
-	{
-		cv::Rect rect(detection.x, detection.y, detection.w, detection.h);
-
-		std::string label;
-		cv::Scalar color = cv::Scalar(255, 255, 255);
-		if (detection.classId == 0	) { label = "Attack Style Tab";	};
-		if (detection.classId == 1	) { label = "Friends List Tab";	};
-		if (detection.classId == 2	) { label = "Inventory Tab";	};
-		if (detection.classId == 3	) { label = "Magic Tab";		};
-		if (detection.classId == 4	) { label = "Prayer Tab";		};
-		if (detection.classId == 5	) { label = "Quests Tab";		};
-		if (detection.classId == 6	) { label = "Skills Tab";		};
-		if (detection.classId == 7	) { label = "Equipments Tab";	};
-
-		cv::rectangle(_frame, rect, color, 2);
-		cv::putText(_frame, label, rect.tl() - cv::Point{0, 15}, cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1.0, color, 2);
-
-		// Generate an image for the tab
-		cv::Mat tabImage = _frame(rect).clone();
-
-		// Visualize image
-		cv::imshow("Tab", tabImage);
-	}
-}
-
 void BotManagerWindow::resetCurrentBoxTarget()
 {
 	_curTargetBoxState = nullptr;
@@ -536,36 +462,4 @@ void BotManagerWindow::resetCurrentBoxTarget()
 	_curClickState = MOUSE_CLICK_NONE;
 	_useWaitTimer = false;
 	_waitTimer = 0.0f;
-}
-
-void BotManagerWindow::takeScreenshotAndSaveLables()
-{
-	// We fetch a clean copy of the frame (no drawings on top of it)
-	cv::Mat cleanFrame = _captureService.GetLatestFrame();
-
-	// Make sure there is a screenshot folder to save to
-	std::filesystem::create_directory("screenshots");
-
-    // Fetch current system time for the screenshot
-    std::time_t t = std::time(nullptr);
-    std::tm tm;
-    localtime_s(&tm, &t);
-
-	// Save the frame to a file (using localtime to get a unique name)
-	std::string framePath = fmt::format("screenshots/screenshot_{:04d}{:02d}{:02d}_{:02d}{:02d}{:02d}",
-		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-	cv::imwrite(framePath + ".png", cleanFrame);
-
-	// Write the box states to a .txt file with the same name as the screenshot
-	std::ofstream boxStateFile(framePath + ".txt");
-	for (auto& state : _detectionsStates)
-	{
-		// Normalize coordinates
-		state.box.x /= cleanFrame.cols;
-		state.box.y /= cleanFrame.rows;
-		state.box.w /= cleanFrame.cols;
-		state.box.h /= cleanFrame.rows;
-		boxStateFile << fmt::format("{} {} {} {} {}\n", state.box.classId, state.box.x, state.box.y, state.box.w, state.box.h);
-	}
-	boxStateFile.close();
 }

@@ -1,25 +1,30 @@
 #pragma once
 
-// Windows dependencies
+// Avoid symbol conflicts with std::min and std::max
 #define NOMINMAX
+
+// Windows dependencies
 #include <windows.h>
 #include <winnls.h>
 
 // Std dependencies
 #include <string>
-
-// Avoid symbol conflicts with std::min and std::max
+#include <vector>
+#include <fstream>
 #include <algorithm>
+#include <filesystem>
 
 // Third party dependencies
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <fmt/core.h>
 #include <glad/glad.h>
 #include <nfd.hpp>
 
 // Internal dependencies
+#include <ml/onnxruntimeInference.h>
 #include <system/mouseMovement.h>
 #include <system/windowCaptureService.h>
 
@@ -374,3 +379,32 @@ class ImGuiPanelGuard
 	ImVec2 _windowPos;
 	const char* _strId;
 };
+
+inline void exportDetections(const cv::Mat& frame, const std::vector<YoloDetectionBox>& detections)
+{
+	// Fetch current system time for the screenshot
+	std::time_t t = std::time(nullptr);
+
+	// Make sure there is a screenshot folder to save to
+	std::filesystem::create_directory("screenshots");
+
+	// Save the screenshot
+	std::string screenshotPath = fmt::format("screenshots\\screenshot_{:d}.png", t);
+	cv::imwrite(screenshotPath, frame);
+
+	// Save the labels
+	std::string labelsPath = fmt::format("screenshots\\screenshot_{:d}.txt", t);
+	std::ofstream file(labelsPath);
+	for (YoloDetectionBox detection : detections)
+	{
+		// Centralize and normalize coordinates
+		detection.x = (detection.x + detection.w / 2.0f) / frame.cols;
+		detection.y = (detection.y + detection.h / 2.0f) / frame.rows;
+		detection.w /= frame.cols;
+		detection.h /= frame.rows;
+
+		// Write to file
+		file << fmt::format("{:d} {} {} {} {}\n", detection.classId, detection.x, detection.y, detection.w, detection.h);
+	}
+	file.close();
+}

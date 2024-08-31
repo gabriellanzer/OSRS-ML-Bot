@@ -23,6 +23,8 @@ public:
 	inline void SetResource(const std::string& key, TType* resource);
 	inline void SetResource(const std::string& key, void* resource);
 
+	inline void RemoveResource(const std::string& key);
+
 	template<typename TType>
 	inline bool TryGetResource(const std::string& key, TType*& resource);
 	inline bool TryGetResource(const std::string& key, void*& resource);
@@ -45,13 +47,18 @@ inline void ResourceManager::SetResource(const std::string& key, void* resource)
 	_resources[key] = resource;
 }
 
+inline void ResourceManager::RemoveResource(const std::string& key)
+{
+	_resources.erase(key);
+}
+
 template<typename TType>
 inline bool ResourceManager::TryGetResource(const std::string& key, TType*& resource)
 {
 	auto it = _resources.find(key);
 	if (it != _resources.end())
 	{
-		resource = dynamic_cast<TType*>(it->second);
+		resource = static_cast<TType*>(it->second);
 		return true;
 	}
 	resource = nullptr;
