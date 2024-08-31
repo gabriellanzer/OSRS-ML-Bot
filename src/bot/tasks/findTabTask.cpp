@@ -72,9 +72,6 @@ void FindTabTask::Run(float deltaTime)
 		}
 	}
 
-	// Debugging
-	cv::imshow("Tab Frame", _tabFrame);
-
 	// Set the output resource
 	ResourceManager::GetInstance().SetResource("Tab Frame", &_tabFrame);
 }
