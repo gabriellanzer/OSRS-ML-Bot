@@ -26,7 +26,6 @@ public:
 	virtual void Run(float deltaTime) override;
 
 private:
-	void runBotInference(float deltaTime);
 	void runMineCopperTask(float deltaTime);
 	void resetCurrentBoxTarget();
 

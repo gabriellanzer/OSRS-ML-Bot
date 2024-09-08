@@ -24,6 +24,7 @@ public:
 	inline void SetResource(const std::string& key, void* resource);
 
 	inline void RemoveResource(const std::string& key);
+	inline void RemoveAllResources();
 
 	template<typename TType>
 	inline bool TryGetResource(const std::string& key, TType*& resource);
@@ -50,6 +51,11 @@ inline void ResourceManager::SetResource(const std::string& key, void* resource)
 inline void ResourceManager::RemoveResource(const std::string& key)
 {
 	_resources.erase(key);
+}
+
+inline void ResourceManager::RemoveAllResources()
+{
+	_resources.clear();
 }
 
 template<typename TType>

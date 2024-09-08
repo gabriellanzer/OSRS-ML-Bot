@@ -49,11 +49,15 @@ BotManagerWindow::~BotManagerWindow()
 
 void BotManagerWindow::Run(float deltaTime)
 {
+	// Clear resource manager for frame
+	ResourceManager& resourceManager = ResourceManager::GetInstance();
+	resourceManager.RemoveAllResources();
+
 	// Fetch a new copy of the image
 	_frame = _captureService.GetLatestFrame();
 
 	// Set frame on resource manager
-	ResourceManager::GetInstance().SetResource("Main Frame", &_frame);
+	resourceManager.SetResource("Main Frame", &_frame);
 
 	if (_isBotRunning)
 	{
@@ -173,38 +177,6 @@ void BotManagerWindow::Run(float deltaTime)
 			ImGui::EndTable();
 		}
 		ImGui::End();
-	}
-}
-
-void BotManagerWindow::runBotInference(float deltaTime)
-{
-	// Run YOLO inference
-	// _model->Inference(_frame, _detections);
-
-	// Filter out the detections that overlap
-	size_t detectionCount = _detections.size();
-	for (int i = 0; i < detectionCount; ++i)
-	{
-		YoloDetectionBox& curBox = _detections[i];
-		for (int j = i + 1; j < _detections.size(); j++)
-		{
-			YoloDetectionBox& otherBox = _detections[j];
-			if (curBox.IsSimilar(otherBox))
-			{
-				// Skip if class is different
-				if (curBox.classId != otherBox.classId) continue;
-
-				// Merge the two detections in current
-				curBox = curBox.Merge(otherBox);
-
-				// Swap with last and pop
-				_detections[j] = _detections.back();
-				_detections.pop_back();
-
-				// Prevent j increment to check the new box
-				--j;
-			}
-		}
 	}
 }
 

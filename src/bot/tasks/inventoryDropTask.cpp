@@ -61,6 +61,32 @@ void InventoryDropTask::Run(float deltaTime)
 	// Run inference
 	_model->Inference(*tabFrame, _detectedItems);
 
+	// Filter out the detections that overlap
+	size_t detectionCount = _detectedItems.size();
+	for (int i = 0; i < detectionCount; ++i)
+	{
+		YoloDetectionBox& curBox = _detectedItems[i];
+		for (int j = i + 1; j < _detectedItems.size(); j++)
+		{
+			YoloDetectionBox& otherBox = _detectedItems[j];
+			if (curBox.IsSimilar(otherBox, 0.95))
+			{
+				// Skip if class is different
+				if (curBox.classId != otherBox.classId) continue;
+
+				// Merge the two detections in current
+				curBox = curBox.Merge(otherBox);
+
+				// Swap with last and pop
+				_detectedItems[j] = _detectedItems.back();
+				_detectedItems.pop_back();
+
+				// Prevent j increment to check the new box
+				--j;
+			}
+		}
+	}
+
 	// Draw the detected items
 	for (const auto& item : _detectedItems)
 	{
