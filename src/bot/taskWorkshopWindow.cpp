@@ -1,4 +1,4 @@
-#include <bot/trainingLabWindow.h>
+#include <bot/taskWorkshopWindow.h>
 
 // Std dependencies
 #include <vector>
@@ -18,41 +18,7 @@
 #include <system/inputManager.h>
 #include <utils.h>
 
-void ComputeMovementsHistogram(const std::vector<MouseMovement>& mouseMovements, std::vector<float>& histogram, const int binWidth = 50)
-{
-	// Get all distances
-	std::vector<float> distances;
-	distances.reserve(mouseMovements.size());
-	for (const auto& movement : mouseMovements)
-	{
-		distances.push_back(movement.IniEndDistance());
-	}
-
-	// Compute histogram data
-	std::sort(distances.begin(), distances.end());
-
-	// Clear now so we can early-out if there are no matches
-	histogram.clear();
-	if (distances.empty())
-	{
-		return;
-	}
-
-	// Compute number of bins from min and max distances
-	float minDistance = distances[0];
-	float maxDistance = distances.back();
-	int minBin = minDistance / binWidth;
-	int maxBin = maxDistance / binWidth;
-	int numBins = maxBin - minBin + 1;
-	histogram.resize(numBins);
-	for (const auto& dist : distances)
-	{
-		int bin = dist / binWidth - minBin;
-		histogram[bin] += 1;
-	}
-}
-
-TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::GetInstance())
+TaskWorkshopWindow::TaskWorkshopWindow(GLFWwindow* window) : IBotWindow(window), _captureService(WindowCaptureService::GetInstance())
 	, _mouseMovementDatabase(MouseMovementDatabase::GetInstance()), _inputManager(InputManager::GetInstance())
 {
 	// Create a texture for the screen capture
@@ -62,12 +28,12 @@ TrainingLabWindow::TrainingLabWindow(GLFWwindow* window) : IBotWindow(window), _
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
-TrainingLabWindow::~TrainingLabWindow()
+TaskWorkshopWindow::~TaskWorkshopWindow()
 {
 	glDeleteTextures(1, &_frameTexId);
 }
 
-void TrainingLabWindow::Run(float deltaTime)
+void TaskWorkshopWindow::Run(float deltaTime)
 {
 	// Fetch mouse-movements from the database
 	auto& mouseMovements = _mouseMovementDatabase.GetMovements();
@@ -160,17 +126,18 @@ void TrainingLabWindow::Run(float deltaTime)
 		}
 	}
 
-	if (ImGui::Begin("Training", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+	if (ImGui::Begin("Tasks", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 	{
 		// Fetch a new copy of the image
 		_frame = _captureService.GetLatestFrame();
 
-		ImGui::SeparatorText("Welcome to the Training Lab!");
-		if (ImGui::BeginTable("##trainingTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable))
+		ImGui::SeparatorText("This is the Task Workshop! Use it to create and test new tasks.");
+		if (ImGui::BeginTable("##taskWorkshopTable", 3, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable))
 		{
 			float minTasksPanelWidth = std::max(200.0f, ImGui::GetContentRegionAvail().x * 0.2f);
-			ImGui::TableSetupColumn("##statisticsPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel, minTasksPanelWidth);
-			ImGui::TableSetupColumn("##analysisPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel);
+			ImGui::TableSetupColumn("##taskListPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel, minTasksPanelWidth);
+			ImGui::TableSetupColumn("##frameViewPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel);
+			ImGui::TableSetupColumn("##taskStepsPanel", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel);
 
 			// ======================== //
 			//     Statistics Panel     //
@@ -312,81 +279,14 @@ void TrainingLabWindow::Run(float deltaTime)
 
 			ImGui::TableNextColumn();
 			{
-				if (ImGui::BeginTable("##screenViewAndAnalysis", 1, ImGuiTableFlags_Resizable))
-				{
-					const float totalHeight = ImGui::GetContentRegionAvail().y;
-					const float minHeight = totalHeight * 0.2f;
-					static float screenViewHeight = std::max(300.0f, totalHeight * 0.6f); // Initial height
-					static float analysisPanelHeight; // Initial height
-					ImGui::TableSetupColumn("##screenView", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHeaderLabel, 0.0f, 0.0f);
+				ImGuiPanelGuard screenView("Screen View");
+				drawScreenView(_frame, _frameTexId);
+			}
 
-					// Draw mouse position on the frame
-					if (_drawMouseMovements)
-					{
-						for (const auto& movement : mouseMovements)
-						{
-							drawMouseMovement(movement, _frame);
-						}
-					}
-					if (_selMouseMovement != nullptr)
-					{
-						// Draw movement outline first
-						drawMouseMovement(*_selMouseMovement, _frame, 4, cv::Scalar(255, 255, 255));
-						// Then draw the movement
-						drawMouseMovement(*_selMouseMovement, _frame);
-					}
-					if (_hovMouseMovement != nullptr)
-					{
-						// Then draw the movement
-						drawMouseMovement(*_hovMouseMovement, _frame);
-					}
-
-					// Screen View
-					ImGui::TableNextRow();
-					ImGui::TableNextColumn();
-					{
-						ImGuiPanelGuard screenView("Screen View", { 0, screenViewHeight });
-						drawScreenView(_frame, _frameTexId);
-					}
-
-					// Draggable separator
-					ImGui::TableNextRow();
-					ImGui::TableNextColumn();
-					{
-						analysisPanelHeight = ImGui::GetContentRegionAvail().y;
-						drawHorizontalSeparator(screenViewHeight, analysisPanelHeight, totalHeight, minHeight, minHeight);
-					}
-
-					// Analysis Panel
-					ImGui::TableNextRow();
-					ImGui::TableNextColumn();
-					{
-						ImGuiPanelGuard analysisPanel("Analysis Panel", { 0, analysisPanelHeight - 10 });
-
-						ImGui::Text("Movement Distances:");
-						if (mouseMovements.empty())
-						{
-							ImGui::Text("No movements captured.");
-						}
-						else
-						{
-							// Compute histograms
-							std::vector<float> mouseHistogram;
-							ComputeMovementsHistogram(mouseMovements, mouseHistogram);
-
-							auto [availableWidth, availableHeight] = ImGui::GetContentRegionAvail();
-							float plotWidth = std::max(availableWidth * 0.7f, 400.0f);
-
-							float paddingWidth = (availableWidth - plotWidth) / 2.0f;
-							ImGui::Dummy({ paddingWidth, 0 }); ImGui::SameLine();
-							ImGui::PlotHistogram("##histogram", mouseHistogram.data(), mouseHistogram.size(),
-											0, "Number of paths by distance (type = MOUSE_DOWN, granularity = 50px)",
-											0.0f, FLT_MAX, ImVec2(plotWidth, availableHeight * 0.9f));
-						}
-					}
-
-					ImGui::EndTable();
-				}
+			ImGui::TableNextColumn();
+			{
+				ImGuiPanelGuard analysisPanel("Analysis Panel");
+				ImGui::Text("Movement Distances:");
 			}
 
 			ImGui::EndTable();

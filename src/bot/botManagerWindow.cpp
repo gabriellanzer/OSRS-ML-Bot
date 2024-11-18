@@ -1,10 +1,7 @@
 #include <bot/botManagerWindow.h>
 
 // Std dependencies
-#include <ctime>
 #include <string>
-#include <fstream>
-#include <filesystem>
 
 // Third party dependencies
 #include <opencv2/core.hpp>

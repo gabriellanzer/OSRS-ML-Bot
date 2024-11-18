@@ -28,6 +28,7 @@
 #include <bot/ibotWindow.h>
 #include <bot/botManagerWindow.h>
 #include <bot/trainingLabWindow.h>
+#include <bot/taskWorkshopWindow.h>
 
 // Error callback for GLFW
 void glfwErrorCallback(int error, const char* description)
@@ -159,6 +160,7 @@ int main(int argc, char** argv)
 	std::vector<IBotWindow*> botWindows = {
 		new TrainingLabWindow(window),
 		new BotManagerWindow(window),
+		new TaskWorkshopWindow(window),
 	};
 
     // Initialize the previous time point

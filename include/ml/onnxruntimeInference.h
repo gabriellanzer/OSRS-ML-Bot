@@ -12,8 +12,8 @@ class OnnxInferenceBase
 {
   public:
 	OnnxInferenceBase() = delete;
-	OnnxInferenceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames,  const std::vector<int64_t> inputNodeDims)
-		: _session(Ort::Session(nullptr)), _inputNodeNames(inputNodeNames), _outputNodeNames(outputNodeNames), _inputNodeDims(inputNodeDims)
+	OnnxInferenceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames)
+		: _session(Ort::Session(nullptr)), _inputNodeNames(inputNodeNames), _outputNodeNames(outputNodeNames)
 	{
 		// Make sure the environment is initialized
 		_env = Ort::Env(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "Default");
@@ -102,9 +102,8 @@ struct YoloDetectionBox
 class YOLOInterfaceBase : public OnnxInferenceBase
 {
   public:
-	YOLOInterfaceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames,
-					  const std::vector<int64_t> inputNodeDims)
-		: OnnxInferenceBase(inputNodeNames, outputNodeNames, inputNodeDims)
+	YOLOInterfaceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames)
+		: OnnxInferenceBase(inputNodeNames, outputNodeNames)
 	{
 	}
 	virtual ~YOLOInterfaceBase() = default;
@@ -119,7 +118,7 @@ class YOLOInterfaceBase : public OnnxInferenceBase
 class YOLOv8 : public YOLOInterfaceBase
 {
   public:
-	YOLOv8(int classNumber, float confidenceThreshold) : YOLOInterfaceBase({ "images" }, { "output0" }, { 1, 3, 640, 640 })
+	YOLOv8(int classNumber, float confidenceThreshold) : YOLOInterfaceBase({ "images" }, { "output0" })
 		, _classNumber(classNumber), _confidenceThreshold(confidenceThreshold) {}
 	virtual void Inference(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes) override;
 

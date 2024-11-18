@@ -15,4 +15,11 @@ public:
 	virtual const char* GetName() = 0;
 	virtual void GetInputResources(std::vector<std::string>& resources) { };
 	virtual void GetOutputResources(std::vector<std::string>& resources) { };
+	virtual void GetNextTask(IBotTask*& nextTask) { nextTask = _nextTask; };
+	virtual void SetNextTask(IBotTask* nextTask) { _nextTask = nextTask; };
+
+private:
+	// Next task in the chain
+	IBotTask* _nextTask = nullptr;
+
 };

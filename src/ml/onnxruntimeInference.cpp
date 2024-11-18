@@ -11,8 +11,36 @@ bool OnnxInferenceBase::LoadModel(bool useCuda, const wchar_t* modelPath)
 
 	try
 	{
+		printf("Loading ONNX Model from: %ls\n", modelPath);
+
 		// Model path is const wchar_t*
 		_session = Ort::Session(_env, modelPath, _sessionOptions);
+
+		// Local allocator
+		Ort::AllocatorWithDefaultOptions allocator;
+
+		// Get input count
+		assert(_session.GetInputCount() > 0);
+
+		// Get input name
+		Ort::AllocatedStringPtr inputName = _session.GetInputNameAllocated(0, allocator);
+
+		// Get input type and shape
+		Ort::TypeInfo typeInfo = _session.GetInputTypeInfo(0);
+		Ort::ConstTensorTypeAndShapeInfo tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+		std::vector<int64_t> inputDims = tensorInfo.GetShape();
+
+		printf("Input Name: %s\n", inputName.get());
+		printf("Input Shape(%zu):\n", inputDims.size());
+		printf("(");
+		for (int i = 0; i < inputDims.size(); ++i) {
+			printf("%lli", inputDims[i]);
+			if (i != inputDims.size() - 1) printf(", ");
+		}
+		printf(")\n");
+
+		_inputNodeDims = inputDims;
+		printf("Done!\n\n");
 	}
 	catch (Ort::Exception oe)
 	{
@@ -121,8 +149,10 @@ void YOLOv8::Inference(cv::Mat& image, std::vector<YoloDetectionBox>& detectionB
 
 bool YOLOv8::preProcess(cv::Mat& image, std::vector<Ort::Value>& inputTensor)
 {
-	// this will make the input into 1,3,640,640
-	_blob = cv::dnn::blobFromImage(image, 1 / 255.0, cv::Size(640, 640), cv::Scalar(0, 0, 0), true, false);
+	int64_t _imageWidght = _inputNodeDims[2];
+	int64_t _imageHeight = _inputNodeDims[3];
+	// this will make the input into (1,3,_imageWidght,_imageHeight) - usually (1,3,640,640)
+	_blob = cv::dnn::blobFromImage(image, 1 / 255.0, cv::Size(_imageWidght, _imageHeight), cv::Scalar(0, 0, 0), true, false);
 	size_t inputTensorSize = _blob.total();
 	try
 	{

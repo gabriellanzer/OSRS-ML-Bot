@@ -86,7 +86,8 @@
 			"xlocbuf": "cpp",
 			"clocale": "cpp",
 			"csignal": "cpp",
-			"cstdarg": "cpp"
+			"cstdarg": "cpp",
+			"filesystem": "cpp"
 		},
 		"editor.detectIndentation": false,
 		"editor.insertSpaces": false,
