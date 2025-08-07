@@ -16,7 +16,7 @@ class MouseMovementDatabase
 	void UpdateDatabase();
 	void QueryMovement(cv::Point iniPos, cv::Point endPos, float threshold, MouseMovement& outMovements, float minTime = 0.0f, float maxTime = 10.0f);
 
-	bool IsLoaded() const { return !_mouseMovements.empty(); }
+	bool IsLoaded() const { return _mouseMovementsLoaded; }
 
 	std::vector<MouseMovement>& GetMovements() { return _mouseMovements; }
 
@@ -27,6 +27,8 @@ class MouseMovementDatabase
 	MouseMovementDatabase(const MouseMovementDatabase&) = delete;
 	MouseMovementDatabase& operator=(const MouseMovementDatabase&) = delete;
 
+	// Database of all mouse movements
+	bool _mouseMovementsLoaded = false;
 	std::vector<MouseMovement> _mouseMovements;
 
 	// Multiple arrays for query parameters per movement

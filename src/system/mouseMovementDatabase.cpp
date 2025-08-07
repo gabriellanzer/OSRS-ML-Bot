@@ -42,6 +42,14 @@ void MouseMovementDatabase::SaveMovements()
 void MouseMovementDatabase::LoadMovements()
 {
 	std::ifstream file("mouse_movements.json");
+	if (!file.is_open())
+	{
+		std::cout << "Mouse movements file not found, starting with empty database." << std::endl;
+		_mouseMovements.clear();
+		_mouseMovementsLoaded = true;
+		return;
+	}
+
 	nlohmann::json j;
 	try
 	{

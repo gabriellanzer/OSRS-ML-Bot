@@ -38,7 +38,7 @@ target("osrs-bot")
 		set_targetdir("bin/Release/")
 	end
 
-	-- Copy the ONNX Runtime DLL to the target directory after build
+	-- Copy the ONNX Runtime DLL to the target directory on build
     after_build(function (target)
 		print("Build finished! Binary files written to " .. target:targetdir())
 
@@ -53,10 +53,10 @@ target("osrs-bot")
 		print("Done!\n")
 
 		-- Read CUDA_PATH from environment variable
-		print("Searching for CUDA 12 path")
+		print("Searching for CUDA v12.9 path")
 		local cuda_path_env = os.getenv("CUDA_PATH")
 		if not cuda_path_env then
-			raise("CUDA_PATH environment variable is not set! Please install CUDA 12 and try again. You might have to run 'xmake f -c' to clear the cache.")
+			raise("CUDA_PATH environment variable is not set! Please install CUDA v12.9 and cuDNN v9.11 and try again. You might have to run 'xmake f -c' to clear the cache.")
 		end
 		
 		-- Split CUDA_PATH by semicolon in case there are multiple paths
@@ -72,10 +72,11 @@ target("osrs-bot")
 		
 		-- Try each path until we find one with the required DLLs
 		local cuda_path = nil
+		local cudnn_dir = "C:\\Program Files\\NVIDIA\\CUDNN\\v9.11\\bin\\12.9"
+		
 		for _, cuda_dir in ipairs(cuda_paths) do
 			local cudartPath = path.join(cuda_dir, "bin/cudart64_12.dll")
-			local cudnnPath = path.join(cuda_dir, "bin/cudnn64_8.dll")
-			if os.isfile(cudartPath) and os.isfile(cudnnPath) then
+			if os.isfile(cudartPath) and os.isdir(cudnn_dir) then
 				cuda_path = cuda_dir
 				print("Using CUDA path: " .. cuda_path)
 				break
@@ -83,11 +84,21 @@ target("osrs-bot")
 		end
 		
 		if not cuda_path then
-			raise("No valid CUDA path found with required DLLs! Please install CUDA 12 and cuDNN 8, and try again. You might have to run 'xmake f -c' to clear the cache.")
+			raise("No valid CUDA path found with required DLLs! Please install CUDA v12.9 and cuDNN v9.11, and try again. You might have to run 'xmake f -c' to clear the cache.")
 		end
 
+		-- Copy CUDA and cuDNN DLLs to target directory
+		print("Copying CUDA Runtime DLL")
 		local cudartPath = path.join(cuda_path, "bin/cudart64_12.dll")
-		local cudnnPath = path.join(cuda_path, "bin/cudnn64_8.dll")
+		os.cp(cudartPath, target:targetdir())
+		
+		print("Copying all cuDNN DLLs")
+		local cudnn_dll_files = os.files(path.join(cudnn_dir, "*.dll"))
+		for _, dll in ipairs(cudnn_dll_files) do
+			print("Copying " .. path.filename(dll))
+			os.cp(dll, target:targetdir())
+		end
+		print("CUDA DLLs copied successfully!\n")
 
 		-- Copy icon from resources to target directory
 		if not os.isfile(path.join(target:targetdir(), "icon.png")) then
