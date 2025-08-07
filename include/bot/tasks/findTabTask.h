@@ -39,8 +39,8 @@ public:
 
 private:
 	// Internal state
-	class YOLOv8* _model;
-	std::vector<YoloDetectionBox> _detectedTabs;
+	class PreProcessBoxDetectionBase* _model;
+	std::vector<DetectionBox> _detectedTabs;
 	bool _exportDetection = false;
 	bool _shouldOverrideClass = false;
 	TabClasses _overrideClass = TAB_INVENTORY;

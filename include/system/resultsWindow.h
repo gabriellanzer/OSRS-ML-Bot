@@ -12,7 +12,7 @@ class ResultsWindow
 	~ResultsWindow();
 
 	bool ShouldRun() { return _hwnd != nullptr; };
-	void Update(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes);
+	void Update(cv::Mat& frame, std::vector<DetectionBox>& detectionBoxes);
 
   private:
 	HWND _hwnd;

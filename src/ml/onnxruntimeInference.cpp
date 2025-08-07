@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+#include <ml/onnxruntimeInference.h>
+
 bool OnnxInferenceBase::LoadModel(bool useCuda, const wchar_t* modelPath)
 {
 	// Initialize session options
@@ -78,7 +80,7 @@ void OnnxInferenceBase::setSessionOptions(bool useCuda)
 	}
 }
 
-int YOLOInterfaceBase::Inference(cv::Mat& image, std::vector<Ort::Value>& outputTensor)
+int PreProcessBoxDetectionBase::Inference(cv::Mat& image, std::vector<Ort::Value>& outputTensor)
 {
 	std::vector<Ort::Value> inputTensor;
 	bool error = preProcess(image, inputTensor);
@@ -86,7 +88,7 @@ int YOLOInterfaceBase::Inference(cv::Mat& image, std::vector<Ort::Value>& output
 	try
 	{
 		outputTensor = _session.Run(Ort::RunOptions{nullptr}, _inputNodeNames.data(),
-			inputTensor.data(), inputTensor.size(), _outputNodeNames.data(), 1);
+			inputTensor.data(), inputTensor.size(), _outputNodeNames.data(), _outputNodeNames.size());
 	}
 	catch (Ort::Exception oe)
 	{
@@ -97,9 +99,9 @@ int YOLOInterfaceBase::Inference(cv::Mat& image, std::vector<Ort::Value>& output
 	return info.GetElementCount();
 }
 
-void YOLOv8::Inference(cv::Mat& image, std::vector<YoloDetectionBox>& detectionBoxes)
+void YOLOv8::Inference(cv::Mat& image, std::vector<DetectionBox>& detectionBoxes)
 {
-	int elementCount = YOLOInterfaceBase::Inference(image, _outputTensor);
+	int elementCount = PreProcessBoxDetectionBase::Inference(image, _outputTensor);
 	if (elementCount == -1) return;
 
 	_outputScaling = { (float)image.cols / _inputNodeDims[2], (float)image.rows / _inputNodeDims[3] };
@@ -153,6 +155,132 @@ bool YOLOv8::preProcess(cv::Mat& image, std::vector<Ort::Value>& inputTensor)
 	int64_t _imageHeight = _inputNodeDims[3];
 	// this will make the input into (1,3,_imageWidght,_imageHeight) - usually (1,3,640,640)
 	_blob = cv::dnn::blobFromImage(image, 1 / 255.0, cv::Size(_imageWidght, _imageHeight), cv::Scalar(0, 0, 0), true, false);
+	size_t inputTensorSize = _blob.total();
+	try
+	{
+		inputTensor.emplace_back(Ort::Value::CreateTensor<float>(_memoryInfo, (float*)_blob.data, inputTensorSize, _inputNodeDims.data(),
+																 _inputNodeDims.size()));
+	}
+	catch (Ort::Exception oe)
+	{
+		std::cout << "ONNX exception caught: " << oe.what() << ". Code: " << oe.GetOrtErrorCode() << ".\n";
+		return false;
+	}
+	return true;
+}
+
+void RF_DETR::Inference(cv::Mat& frame, std::vector<DetectionBox>& detectionBoxes)
+{
+	int elementCount = PreProcessBoxDetectionBase::Inference(frame, _outputTensor);
+	if (elementCount == -1) return;
+
+	_outputScaling = { (float)frame.cols / _inputNodeDims[2], (float)frame.rows / _inputNodeDims[3] };
+
+	// Get predictions - output[0] is boxes, output[1] is logits
+	float* pred_boxes = _outputTensor[0].GetTensorMutableData<float>();
+	float* pred_logits = _outputTensor[1].GetTensorMutableData<float>();
+	
+	auto boxes_shape = _outputTensor[0].GetTensorTypeAndShapeInfo().GetShape();
+	auto logits_shape = _outputTensor[1].GetTensorTypeAndShapeInfo().GetShape();
+	
+	int num_queries = static_cast<int>(boxes_shape[1]);  // Number of object queries
+	int num_classes = static_cast<int>(logits_shape[2]); // Number of classes
+	
+	// Apply sigmoid to logits to get probabilities
+	std::vector<float> probs(num_queries * num_classes);
+	for (int i = 0; i < num_queries * num_classes; ++i) {
+		probs[i] = 1.0f / (1.0f + std::exp(-pred_logits[i]));
+	}
+	
+	// Select top 300 detections
+	const int num_select = std::min(300, num_queries * num_classes);
+	std::vector<std::pair<float, int>> prob_index_pairs;
+	
+	for (int i = 0; i < num_queries * num_classes; ++i) {
+		prob_index_pairs.emplace_back(probs[i], i);
+	}
+	
+	// Sort by probability (descending)
+	std::partial_sort(prob_index_pairs.begin(), prob_index_pairs.begin() + num_select,
+					  prob_index_pairs.end(), 
+					  [](const auto& a, const auto& b) { return a.first > b.first; });
+	
+	// Process top detections
+	detectionBoxes.clear();
+	for (int i = 0; i < num_select; ++i) {
+		float score = prob_index_pairs[i].first;
+		int topk_index = prob_index_pairs[i].second;
+		
+		if (score < _confidenceThreshold) continue;
+		
+		int box_idx = topk_index / num_classes;
+		int class_id = topk_index % num_classes;
+		
+		// Get box coordinates (center_x, center_y, width, height)
+		float cx = pred_boxes[box_idx * 4 + 0];
+		float cy = pred_boxes[box_idx * 4 + 1];
+		float w = pred_boxes[box_idx * 4 + 2];
+		float h = pred_boxes[box_idx * 4 + 3];
+		
+		// Clamp width and height to minimum 0
+		w = std::max(0.0f, w);
+		h = std::max(0.0f, h);
+		
+		// Convert from center-width-height to x1y1x2y2
+		float x1 = cx - 0.5f * w;
+		float y1 = cy - 0.5f * h;
+		float x2 = cx + 0.5f * w;
+		float y2 = cy + 0.5f * h;
+		
+		// Scale from relative [0,1] to absolute coordinates
+		x1 *= frame.cols;
+		y1 *= frame.rows;
+		x2 *= frame.cols;
+		y2 *= frame.rows;
+		
+		// Convert back to x,y,w,h format for DetectionBox
+		float final_x = x1;
+		float final_y = y1;
+		float final_w = x2 - x1;
+		float final_h = y2 - y1;
+		
+		DetectionBox box;
+		box.x = final_x;
+		box.y = final_y;
+		box.w = final_w;
+		box.h = final_h;
+		box.classId = class_id;
+		box.confidence = score;
+		
+		detectionBoxes.push_back(box);
+	}
+	
+	_outputTensor.clear();
+}
+
+bool RF_DETR::preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor)
+{
+	int64_t _imageWidth = _inputNodeDims[2];
+	int64_t _imageHeight = _inputNodeDims[3];
+	
+	// Resize the image to the required dimensions
+	cv::Mat resized;
+	cv::resize(frame, resized, cv::Size(_imageWidth, _imageHeight));
+	
+	// Convert to float and normalize to [0, 1]
+	cv::Mat floatImg;
+	resized.convertTo(floatImg, CV_32F, 1.0 / 255.0);
+	
+	// Apply ImageNet normalization (means and stds)
+	cv::Scalar means(0.485, 0.456, 0.406);
+	cv::Scalar stds(0.229, 0.224, 0.225);
+	
+	cv::subtract(floatImg, means, floatImg);
+	cv::divide(floatImg, stds, floatImg);
+	
+	// Create blob with NCHW format
+	_blob = cv::dnn::blobFromImage(floatImg, 1.0, cv::Size(_imageWidth, _imageHeight), cv::Scalar(0, 0, 0), true, false);
+	
 	size_t inputTensorSize = _blob.total();
 	try
 	{

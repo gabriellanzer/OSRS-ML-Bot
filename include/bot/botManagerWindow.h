@@ -13,7 +13,7 @@
 
 struct DetectionBoxState
 {
-	YoloDetectionBox box;
+	DetectionBox box;
 	float lastSeen;
 };
 
@@ -43,7 +43,7 @@ private:
 	bool _isBotRunning = false;
 
 	// TODO: move this to a task
-	std::vector<YoloDetectionBox> _detections;
+	std::vector<DetectionBox> _detections;
 	std::list<DetectionBoxState> _detectionsStates;
 	bool _useWaitTimer = false;
 	float _waitTimer = 0.0f;

@@ -19,7 +19,8 @@
 FindTabTask::FindTabTask()
 {
 	// Set the default model path
-	const wchar_t* defaultModelPath = L"..\\..\\models\\yolov8s-osrs-ui-tabs-v1.onnx";
+	// const wchar_t* defaultModelPath = L"..\\..\\models\\yolov8s-osrs-tabs-v1.onnx";
+	const wchar_t* defaultModelPath = L"..\\..\\models\\rf-detr-osrs-tabs-1k-v1.onnx";
 	const size_t len = wcslen(defaultModelPath) + 1;
 	_modelPath = new wchar_t[len];
 	std::memcpy(_modelPath, defaultModelPath, len * sizeof(wchar_t));
@@ -40,7 +41,8 @@ bool FindTabTask::Load()
 	if (_modelPath == nullptr) return false;
 
 	// Load the model
-	_model = new YOLOv8(8, _confidenceThreshold);
+	// _model = new YOLOv8(8, _confidenceThreshold);
+	_model = new RF_DETR(8, _confidenceThreshold);
 	_model->LoadModel(true, _modelPath);
 
 	// Run a warm-up inference
@@ -66,10 +68,10 @@ void FindTabTask::Run(float deltaTime)
 	size_t detectionCount = _detectedTabs.size();
 	for (int i = 0; i < detectionCount; ++i)
 	{
-		YoloDetectionBox& curBox = _detectedTabs[i];
+		DetectionBox& curBox = _detectedTabs[i];
 		for (int j = i + 1; j < _detectedTabs.size(); j++)
 		{
-			YoloDetectionBox& otherBox = _detectedTabs[j];
+			DetectionBox& otherBox = _detectedTabs[j];
 			if (curBox.IsSimilar(otherBox, 0.95f))
 			{
 				// Skip if class is different

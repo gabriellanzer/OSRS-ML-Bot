@@ -5,7 +5,7 @@
 struct ResultData
 {
     cv::Mat& image;
-    std::vector<YoloDetectionBox>& detections;
+    std::vector<DetectionBox>& detections;
 };
 
 double fps = 0.0;
@@ -189,7 +189,7 @@ ResultsWindow::~ResultsWindow() {
 	_monitor = nullptr;
 }
 
-void ResultsWindow::Update(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes)
+void ResultsWindow::Update(cv::Mat& frame, std::vector<DetectionBox>& detectionBoxes)
 {
 	// Compute frames per second
 	sampleFramerate();

@@ -66,7 +66,7 @@ public:
 private:
 	// Internal state
 	class YOLOv8* _model;
-	std::vector<YoloDetectionBox> _detectedItems;
+	std::vector<DetectionBox> _detectedItems;
 
 	// Public state
 	wchar_t* _modelPath = nullptr;

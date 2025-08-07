@@ -65,10 +65,10 @@ void InventoryDropTask::Run(float deltaTime)
 	size_t detectionCount = _detectedItems.size();
 	for (int i = 0; i < detectionCount; ++i)
 	{
-		YoloDetectionBox& curBox = _detectedItems[i];
+		DetectionBox& curBox = _detectedItems[i];
 		for (int j = i + 1; j < _detectedItems.size(); j++)
 		{
-			YoloDetectionBox& otherBox = _detectedItems[j];
+			DetectionBox& otherBox = _detectedItems[j];
 			if (curBox.IsSimilar(otherBox, 0.95))
 			{
 				// Skip if class is different

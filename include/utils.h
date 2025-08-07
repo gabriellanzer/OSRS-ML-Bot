@@ -380,7 +380,7 @@ class ImGuiPanelGuard
 	const char* _strId;
 };
 
-inline void exportDetections(const cv::Mat& frame, const std::vector<YoloDetectionBox>& detections)
+inline void exportDetections(const cv::Mat& frame, const std::vector<DetectionBox>& detections)
 {
 	// Fetch current system time for the screenshot
 	std::time_t t = std::time(nullptr);
@@ -395,7 +395,7 @@ inline void exportDetections(const cv::Mat& frame, const std::vector<YoloDetecti
 	// Save the labels
 	std::string labelsPath = fmt::format("screenshots\\screenshot_{:d}.txt", t);
 	std::ofstream file(labelsPath);
-	for (YoloDetectionBox detection : detections)
+	for (DetectionBox detection : detections)
 	{
 		// Centralize and normalize coordinates
 		detection.x = (detection.x + detection.w / 2.0f) / frame.cols;

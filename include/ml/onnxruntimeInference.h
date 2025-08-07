@@ -40,12 +40,13 @@ class OnnxInferenceBase
 	cv::Mat _blob;
 };
 
-struct YoloDetectionBox
+struct DetectionBox
 {
     float x, y, w, h;
     int classId;
+	float confidence = -1.0f; // Optional, can be used to store confidence score
 
-	bool IsSimilar(const YoloDetectionBox& other, float centerThreshold = 100.0f, float overlapRatioThreshold = 0.3f) const
+	bool IsSimilar(const DetectionBox& other, float centerThreshold = 100.0f, float overlapRatioThreshold = 0.3f) const
 	{
 		// TODO: Re-evaluate this function
 		// // Check center distance first
@@ -87,7 +88,7 @@ struct YoloDetectionBox
 		return cv::Point(x + w / 2, y + h / 2);
 	}
 
-	YoloDetectionBox Merge(const YoloDetectionBox& other) const
+	DetectionBox Merge(const DetectionBox& other) const
 	{
 		assert(classId == other.classId && "Can't merge boxes of different classes!");
 
@@ -99,38 +100,60 @@ struct YoloDetectionBox
 	}
 };
 
-class YOLOInterfaceBase : public OnnxInferenceBase
+class PreProcessBoxDetectionBase : public OnnxInferenceBase
 {
   public:
-	YOLOInterfaceBase(const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames)
-		: OnnxInferenceBase(inputNodeNames, outputNodeNames)
+	PreProcessBoxDetectionBase(int classNumber, float confidenceThreshold, const std::vector<const char*>& inputNodeNames, const std::vector<const char*>& outputNodeNames)
+		: OnnxInferenceBase(inputNodeNames, outputNodeNames), _classNumber(classNumber), _confidenceThreshold(confidenceThreshold)
 	{
 	}
-	virtual ~YOLOInterfaceBase() = default;
+	virtual ~PreProcessBoxDetectionBase() = default;
 
-	virtual void Inference(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes) = 0;
-
-  protected:
-	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) = 0;
-	virtual int Inference(cv::Mat& frame, std::vector<Ort::Value>& outputTensor) final;
-};
-
-class YOLOv8 : public YOLOInterfaceBase
-{
-  public:
-	YOLOv8(int classNumber, float confidenceThreshold) : YOLOInterfaceBase({ "images" }, { "output0" })
-		, _classNumber(classNumber), _confidenceThreshold(confidenceThreshold) {}
-	virtual void Inference(cv::Mat& frame, std::vector<YoloDetectionBox>& detectionBoxes) override;
+	virtual void Inference(cv::Mat& frame, std::vector<DetectionBox>& detectionBoxes) = 0;
 
 	void SetConfidenceThreshold(float threshold) { _confidenceThreshold = threshold; }
 	void SetClassNumber(int classNumber) { _classNumber = classNumber; }
 
   protected:
-	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) override;
+	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) = 0;
+	virtual int Inference(cv::Mat& frame, std::vector<Ort::Value>& outputTensor) final;
 
 	// Model specific config
 	int _classNumber;
 	float _confidenceThreshold;
+};
+
+class YOLOv8 : public PreProcessBoxDetectionBase
+{
+  public:
+	YOLOv8(int classNumber, float confidenceThreshold) : PreProcessBoxDetectionBase(classNumber, confidenceThreshold, { "images" }, { "output0" })
+	{
+	}
+	virtual ~YOLOv8() = default;
+
+	virtual void Inference(cv::Mat& frame, std::vector<DetectionBox>& detectionBoxes) override;
+
+  protected:
+	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) override;
+
+	// Inference state
+	std::vector<Ort::Value> _outputTensor;
+	cv::Vec2f _outputScaling;
+};
+
+class RF_DETR : public PreProcessBoxDetectionBase
+{
+  public:
+	RF_DETR(int classNumber, float confidenceThreshold) : PreProcessBoxDetectionBase(classNumber, confidenceThreshold, { "input" }, { "dets", "labels" })
+	{
+	}
+
+	virtual ~RF_DETR() = default;
+
+	virtual void Inference(cv::Mat& frame, std::vector<DetectionBox>& detectionBoxes) override;
+
+  protected:
+	virtual bool preProcess(cv::Mat& frame, std::vector<Ort::Value>& inputTensor) override;
 
 	// Inference state
 	std::vector<Ort::Value> _outputTensor;

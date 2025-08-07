@@ -1,4 +1,3 @@
-
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate")
 
@@ -11,8 +10,9 @@ add_requires("stb", {configs = {headeronly = true}})
 add_requires("glfw", "glm", "glad", "fmt", "nativefiledialog-extended")
 
 -- Bot requirements
-add_requires("onnxruntime", {configs = {gpu = true, cuda_version = "12"}})
-add_requires("opencv", "nlohmann_json")
+add_requires("onnxruntime", {configs = {gpu = true}})
+add_requires("opencv", {configs = {avif = false, shared = false}, system = false})
+add_requires("nlohmann_json")
 
 target("osrs-bot")
     set_kind("binary")
@@ -54,21 +54,40 @@ target("osrs-bot")
 
 		-- Read CUDA_PATH from environment variable
 		print("Searching for CUDA 12 path")
-		local cuda_path = os.getenv("CUDA_PATH")
-		if not cuda_path then
+		local cuda_path_env = os.getenv("CUDA_PATH")
+		if not cuda_path_env then
 			raise("CUDA_PATH environment variable is not set! Please install CUDA 12 and try again. You might have to run 'xmake f -c' to clear the cache.")
 		end
-		print("CUDA path: " .. cuda_path)
+		
+		-- Split CUDA_PATH by semicolon in case there are multiple paths
+		local cuda_paths = {}
+		for path in cuda_path_env:gmatch("[^;]+") do
+			table.insert(cuda_paths, path)
+		end
+		
+		print("Found " .. #cuda_paths .. " CUDA path(s):")
+		for i, cuda_dir in ipairs(cuda_paths) do
+			print("  " .. i .. ": " .. cuda_dir)
+		end
+		
+		-- Try each path until we find one with the required DLLs
+		local cuda_path = nil
+		for _, cuda_dir in ipairs(cuda_paths) do
+			local cudartPath = path.join(cuda_dir, "bin/cudart64_12.dll")
+			local cudnnPath = path.join(cuda_dir, "bin/cudnn64_8.dll")
+			if os.isfile(cudartPath) and os.isfile(cudnnPath) then
+				cuda_path = cuda_dir
+				print("Using CUDA path: " .. cuda_path)
+				break
+			end
+		end
+		
+		if not cuda_path then
+			raise("No valid CUDA path found with required DLLs! Please install CUDA 12 and cuDNN 8, and try again. You might have to run 'xmake f -c' to clear the cache.")
+		end
 
 		local cudartPath = path.join(cuda_path, "bin/cudart64_12.dll")
-		if not os.isfile(cudartPath) then
-			raise("cuDART DLL not found at '" .. cudartPath .. "'! Please install CUDA 12 and try again. You might have to run 'xmake f -c' to clear the cache.")
-		end
-
 		local cudnnPath = path.join(cuda_path, "bin/cudnn64_8.dll")
-		if not os.isfile(cudnnPath) then
-			raise("cuDNN DLL not found at '" .. cudnnPath .. "'! Please install cuDNN 8 for CUDA 12 and copy files to the specified path.")
-		end
 
 		-- Copy icon from resources to target directory
 		if not os.isfile(path.join(target:targetdir(), "icon.png")) then
