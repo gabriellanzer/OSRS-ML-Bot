@@ -173,11 +173,11 @@ LRESULT CALLBACK customWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 			HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 			HFONT oldFont = (HFONT)SelectObject(memDC, hFont);
 
-			// Clear the background
-			RECT rect = {0, 0, windowProcData->width, windowProcData->height};
-			HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(255, 255, 255) : RGB(0, 0, 0));
-			FillRect(memDC, &rect, brush);
-			DeleteObject(brush);
+            // Clear the background
+            RECT rect = {0, 0, windowProcData->width, windowProcData->height};
+            HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(20, 20, 20) : RGB(0, 0, 0));
+            FillRect(memDC, &rect, brush);
+            DeleteObject(brush);
 
 			// Draw the text
 			SetTextColor(memDC, RGB(255, 255, 255));
@@ -185,7 +185,11 @@ LRESULT CALLBACK customWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 			std::string label = windowProcData->deviceName;
 			if (windowProcData->hovered)
 			{
-				label += "\n(Click to select)";
+				label += "\n(Click to select for capture)";
+			}
+			else
+			{
+				label += "\n(OSRS Bot will open here)";
 			}
 
 			// Calculate the height of the text
@@ -213,13 +217,13 @@ LRESULT CALLBACK customWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 			return 1;
         }
 		case WM_ERASEBKGND: {
-			HDC hdc = (HDC)wParam;
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-            HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(20, 20, 20) : RGB(1, 1, 1));
-            FillRect(hdc, &rect, brush);
-            DeleteObject(brush);
-
+			// TODO: This might be removed, I don't recall why I needed it in the first place
+			// HDC hdc = (HDC)wParam;
+            // RECT rect;
+            // GetClientRect(hwnd, &rect);
+            // HBRUSH brush = CreateSolidBrush(windowProcData->hovered ? RGB(20, 20, 20) : RGB(0, 0, 0));
+            // FillRect(hdc, &rect, brush);
+            // DeleteObject(brush);
             return 1; // Indicate that the background has been erased
         }
         default: {
